@@ -148,6 +148,8 @@ Primary stack: Whisper + Chatterbox (voice) + EchoMimicV3 (animation). Phases 0-
 
 ## 11. Changelog
 
+- **2026-10-13 (15)** — 384 demo finished and QC'd (see §15 A). New voice sample extracted from Julio's webcam clip (`samples/.../2026-10-13-154745 new.webm`, 47.6 s, 2048x1536 15 fps, -15.7 LUFS) -> `phase0/in/voice_video_{24k,48k}.wav` (git-ignored); not yet cloned.
+
 - **2026-10-13 (14)** — Landscape research (similar GitHub projects) and experiment backlog A-J added as §15. Julio: try everything; wait for the running 384 render to finish before starting new GPU experiments.
 
 - **2026-10-13 (13)** — Added `README.md` (public project overview, reproduction steps, consent policy).
@@ -192,7 +194,7 @@ Caveat: speeds/VRAM are from READMEs/blogs/forums, not reproducible benchmarks; 
 **Own measurements (384x384 head crop, EchoMimicV3-Flash):** sampling 27 s per 81 frames (656x880: ~150 s; 512: ~53 s). Head motion is controlled by **seed** and **audio_guidance_scale**; text prompt and text guidance_scale have ~no effect (Flash is distilled); TeaCache off and audio_scale gave no gain. Chaining segments from the last frame causes colour/contrast drift (visible by ~20 s); re-anchoring each segment to the original photo avoids it.
 
 **Backlog (all to be tried; status in checkboxes):**
-- [ ] A. Read results of the running 384 demo (`scripts/run_demo384.sh`, best-of-2 seeds, re-anchored, xfade): check joins, head motion, teeth, drift.
+- [x] A. 384 demo done (`phase0/out/demo384_final.mp4`, 32 s, 384x384, 11 segments x 2 seeds, ~50 min wall). Result: **no colour drift** (brightness 143-145, contrast 68-69, saturation 48-50 flat over 32 s, `scripts/video_qc.py`); head motion clearly larger (best seed: x 12.5% / y 13% of width/height over 3.2 s); teeth natural off-white; joins show mild jumps (frame diff up to 2.7x average at 4-frame xfades) -> improve with longer windows / overlap blending. Seeds picked: 21 for 8/11 segments. Julio must still judge lip-sync, accent, naturalness.
 - [ ] B. Base-video approach: Julio records a 20-30 s natural talking clip; put new speech on it via InfiniteTalk video-to-video and/or MuseTalk (real head motion for free). Needs Julio's recording.
 - [ ] C. InfiniteTalk audio-only on GB10 (14B; try fp8, `--mode streaming`, 480P) as quality ceiling; record speed and drift.
 - [ ] D. EchoMimic Long Video CFG with longer windows (e.g. 161+ frames) vs. 81-frame re-anchored.
