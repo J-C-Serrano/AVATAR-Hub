@@ -148,6 +148,8 @@ Primary stack: Whisper + Chatterbox (voice) + EchoMimicV3 (animation). Phases 0-
 
 ## 11. Changelog
 
+- **2026-10-13 (14)** — Landscape research (similar GitHub projects) and experiment backlog A-J added as §15. Julio: try everything; wait for the running 384 render to finish before starting new GPU experiments.
+
 - **2026-10-13 (13)** — Added `README.md` (public project overview, reproduction steps, consent policy).
 
 - **2026-10-13 (12)** — AVATAR Hub made its own git repo (was an untracked folder inside the 7 GB `AI_Projects` repo), public on GitHub as `J-C-Serrano/AVATAR-Hub`, branch `main`; Apache-2.0 `LICENSE` added; `.gitignore` excludes samples, inputs, outputs, weights (28 GB), and the upstream `echomimic_v3` clone. Policy: update HANDOVER + commit + push every session. Also: motion study at 384 (seed and audio-guidance are the levers; text prompt and text guidance barely matter), 384x384 head-crop render `scripts/run_demo384.sh` (re-anchored to original photo, best-of-2 seeds, xfade joins) in progress.
@@ -175,6 +177,31 @@ Primary stack: Whisper + Chatterbox (voice) + EchoMimicV3 (animation). Phases 0-
 - **2026-10-13** — Project started. Research on GB10 constraints and candidate models; chose
   2D talking-head + offline rendering; drafted pipeline and shortlist. Created `HANDOVER.md`
   (merged from original Avatar Maker md).
+
+---
+
+## 15. Landscape research and experiment backlog (2026-10-13)
+
+Sources: [PunithVT/ai-avatar-system](https://github.com/PunithVT/ai-avatar-system) (MIT; Whisper->LLM->Chatterbox->MuseTalk, Celery/Redis, persistent worker, fallbacks, **no consent step**),
+[InfiniteTalk](https://github.com/MeiGen-AI/InfiniteTalk) (Apache-2.0; Wan2.1-14B; streaming mode with context frames; head/body aligned to audio; video-to-video; colour shift beyond ~1 min),
+[MultiTalk](https://github.com/meigen-ai/multitalk) (APG against colour error accumulation),
+[EchoMimicV3 paper](https://arxiv.org/html/2507.03905v4) (windows show colour/identity inconsistency; Long Video CFG for >138 frames),
+[NVIDIA forum: Wan on Spark](https://forums.developer.nvidia.com/t/image-to-video-generation-using-the-spark-vs-pc/370077) (anecdotal: 14B-class models are slow on GB10).
+Caveat: speeds/VRAM are from READMEs/blogs/forums, not reproducible benchmarks; MuseTalk dependency licenses unverified.
+
+**Own measurements (384x384 head crop, EchoMimicV3-Flash):** sampling 27 s per 81 frames (656x880: ~150 s; 512: ~53 s). Head motion is controlled by **seed** and **audio_guidance_scale**; text prompt and text guidance_scale have ~no effect (Flash is distilled); TeaCache off and audio_scale gave no gain. Chaining segments from the last frame causes colour/contrast drift (visible by ~20 s); re-anchoring each segment to the original photo avoids it.
+
+**Backlog (all to be tried; status in checkboxes):**
+- [ ] A. Read results of the running 384 demo (`scripts/run_demo384.sh`, best-of-2 seeds, re-anchored, xfade): check joins, head motion, teeth, drift.
+- [ ] B. Base-video approach: Julio records a 20-30 s natural talking clip; put new speech on it via InfiniteTalk video-to-video and/or MuseTalk (real head motion for free). Needs Julio's recording.
+- [ ] C. InfiniteTalk audio-only on GB10 (14B; try fp8, `--mode streaming`, 480P) as quality ceiling; record speed and drift.
+- [ ] D. EchoMimic Long Video CFG with longer windows (e.g. 161+ frames) vs. 81-frame re-anchored.
+- [ ] E. Persistent worker (load weights once, loop segments); ~40% of wall time is model load today.
+- [ ] F. Fallbacks (TTS/animation/seed) instead of hard failure.
+- [ ] G. Objective evals: SyncNet LSE-C/D (lip-sync), identity similarity (not InsightFace: licence), per-second colour drift, head-motion metric (`scripts/motion_metric.py`).
+- [ ] H. Accent: compare CosyVoice2 and Chatterbox cfg_weight 0 / fine-tune on the 30-min recording (no public Chatterbox accent-fine-tune recipe found; own R&D).
+- [ ] I. SBOM/licence audit incl. MuseTalk deps, InfiniteTalk, SyncNet.
+- [ ] J. Remove runtime network dependency (spacy-pkuseg model fetched from GitHub on first run).
 
 ---
 
