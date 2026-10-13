@@ -60,6 +60,7 @@ open-source, run on hardware already owned rather than a SaaS API.
 | 2026-10-13 | **Voice must keep the speaker's own accent** (English must sound like Julio's accented English, not native/"perfect" English) | Julio |
 | 2026-10-13 | **Visual realism:** no unnaturally white teeth; head movement must be more than a few cm (natural nods/tilts/turns) | Julio |
 | 2026-10-13 | Demo target: ~30 s video | Julio |
+| 2026-10-13 | Repo is public on GitHub, own repo, **Apache-2.0** license | Julio |
 
 Architecture: `ARCHITECTURE.md` v0.3 (demo-first). Approved to start Phase 0.
 
@@ -135,7 +136,7 @@ Primary stack: Whisper + Chatterbox (voice) + EchoMimicV3 (animation). Phases 0-
 - [x] Phase 0: Chatterbox multilingual runs on GB10 (zero-shot clone from Julio's 48 s sample); fi/sv/en intelligible (Whisper WER 0.00 / 0.04 / 0.00); RTF ~0.55. **Julio must still listen** to `phase0/out/tts_{en,fi,sv}.wav` for voice likeness + Finnish/Swedish accent
 - [x] Phase 0: voice likeness + fi/sv accent approved by Julio (2026-10-13)
 - [x] Phase 0: animation smoke test: EchoMimicV3-Flash runs on GB10 (81 frames / 3.2 s clip in ~2.5 min incl. 8 steps; output 656x880 25fps with audio). **Julio must still watch** `phase0/out/anim_en/face_768_output.mp4` for lip-sync/quality
-- [ ] Phase 0: license/SBOM audit (not started) - **note: repo has no LICENSE file yet; public repo = all rights reserved by default; choose one (Apache-2.0 matches the model stack)**
+- [ ] Phase 0: license/SBOM audit (not started) (repo itself is Apache-2.0, see `LICENSE`)
 - [ ] Phases 1-5 (see ARCHITECTURE.md §11)
 
 ## 10. Next steps
@@ -147,7 +148,7 @@ Primary stack: Whisper + Chatterbox (voice) + EchoMimicV3 (animation). Phases 0-
 
 ## 11. Changelog
 
-- **2026-10-13 (12)** — AVATAR Hub made its own git repo (was an untracked folder inside the 7 GB `AI_Projects` repo), public on GitHub as `J-C-Serrano/AVATAR-Hub`, branch `main`; `.gitignore` excludes samples, inputs, outputs, weights (28 GB), and the upstream `echomimic_v3` clone. Policy: update HANDOVER + commit + push every session. Also: motion study at 384 (seed and audio-guidance are the levers; text prompt and text guidance barely matter), 384x384 head-crop render `scripts/run_demo384.sh` (re-anchored to original photo, best-of-2 seeds, xfade joins) in progress.
+- **2026-10-13 (12)** — AVATAR Hub made its own git repo (was an untracked folder inside the 7 GB `AI_Projects` repo), public on GitHub as `J-C-Serrano/AVATAR-Hub`, branch `main`; Apache-2.0 `LICENSE` added; `.gitignore` excludes samples, inputs, outputs, weights (28 GB), and the upstream `echomimic_v3` clone. Policy: update HANDOVER + commit + push every session. Also: motion study at 384 (seed and audio-guidance are the levers; text prompt and text guidance barely matter), 384x384 head-crop render `scripts/run_demo384.sh` (re-anchored to original photo, best-of-2 seeds, xfade joins) in progress.
 
 - **2026-10-13 (11)** — Julio's requirement changes (accent preserved, natural teeth, bigger head motion, 30 s demo; see §3). Accent: 3 Chatterbox variants of a 37 s script in `phase0/out/long_en_{a_cfg0,b_cfg0_ex7,c_default}.wav` (cfg_weight 0 lowers pull toward the model's native accent; default is cfg 0.5) - **Julio to pick**. Motion/teeth: via EchoMimic text prompt + negative prompt (see `animate_test.sh` env PROMPT/NEG); head tilt/shift visibly larger than the first run. 30 s demo: chained 81-frame segments (`scripts/animate_long.sh`, last frame seeds next segment) -> `phase0/out/demo32_final.mp4`.
 
