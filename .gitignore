@@ -1,0 +1,23 @@
+# Personal data (faces, voices, consent material) - never commit
+samples/
+phase0/in/
+phase0/out/
+
+# Large / downloadable artefacts
+phase0/weights/
+phase0/hf_cache/
+# upstream repo: clone it, see HANDOVER.md §14 (commit 7e89489)
+phase0/echomimic_v3/
+
+# Secrets / env
+.env
+*.key
+*.pem
+HF_TOKEN*
+
+# Misc
+__pycache__/
+*.pyc
+*.wav
+*.mp4
+*.m4a
