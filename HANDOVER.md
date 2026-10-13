@@ -148,6 +148,8 @@ Primary stack: Whisper + Chatterbox (voice) + EchoMimicV3 (animation). Phases 0-
 
 ## 11. Changelog
 
+- **2026-10-13 (13)** — Added `README.md` (public project overview, reproduction steps, consent policy).
+
 - **2026-10-13 (12)** — AVATAR Hub made its own git repo (was an untracked folder inside the 7 GB `AI_Projects` repo), public on GitHub as `J-C-Serrano/AVATAR-Hub`, branch `main`; Apache-2.0 `LICENSE` added; `.gitignore` excludes samples, inputs, outputs, weights (28 GB), and the upstream `echomimic_v3` clone. Policy: update HANDOVER + commit + push every session. Also: motion study at 384 (seed and audio-guidance are the levers; text prompt and text guidance barely matter), 384x384 head-crop render `scripts/run_demo384.sh` (re-anchored to original photo, best-of-2 seeds, xfade joins) in progress.
 
 - **2026-10-13 (11)** — Julio's requirement changes (accent preserved, natural teeth, bigger head motion, 30 s demo; see §3). Accent: 3 Chatterbox variants of a 37 s script in `phase0/out/long_en_{a_cfg0,b_cfg0_ex7,c_default}.wav` (cfg_weight 0 lowers pull toward the model's native accent; default is cfg 0.5) - **Julio to pick**. Motion/teeth: via EchoMimic text prompt + negative prompt (see `animate_test.sh` env PROMPT/NEG); head tilt/shift visibly larger than the first run. 30 s demo: chained 81-frame segments (`scripts/animate_long.sh`, last frame seeds next segment) -> `phase0/out/demo32_final.mp4`.
