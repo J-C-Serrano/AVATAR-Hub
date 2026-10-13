@@ -148,6 +148,8 @@ Primary stack: Whisper + Chatterbox (voice) + EchoMimicV3 (animation). Phases 0-
 
 ## 11. Changelog
 
+- **2026-10-13 (16)** — Julio rejected segmented EchoMimic output (seams, bad head movement). Built MuseTalk pipeline (§16) on his webcam base clip with a new Spanish-accented voice clone; result `out/mt_A_final.mp4`, continuous 37.4 s. Remaining backlog (C-J) not started.
+
 - **2026-10-13 (15)** — 384 demo finished and QC'd (see §15 A). New voice sample extracted from Julio's webcam clip (`samples/.../2026-10-13-154745 new.webm`, 47.6 s, 2048x1536 15 fps, -15.7 LUFS) -> `phase0/in/voice_video_{24k,48k}.wav` (git-ignored); not yet cloned.
 
 - **2026-10-13 (14)** — Landscape research (similar GitHub projects) and experiment backlog A-J added as §15. Julio: try everything; wait for the running 384 render to finish before starting new GPU experiments.
@@ -195,7 +197,7 @@ Caveat: speeds/VRAM are from READMEs/blogs/forums, not reproducible benchmarks; 
 
 **Backlog (all to be tried; status in checkboxes):**
 - [x] A. 384 demo done (`phase0/out/demo384_final.mp4`, 32 s, 384x384, 11 segments x 2 seeds, ~50 min wall). Result: **no colour drift** (brightness 143-145, contrast 68-69, saturation 48-50 flat over 32 s, `scripts/video_qc.py`); head motion clearly larger (best seed: x 12.5% / y 13% of width/height over 3.2 s); teeth natural off-white; joins show mild jumps (frame diff up to 2.7x average at 4-frame xfades) -> improve with longer windows / overlap blending. Seeds picked: 21 for 8/11 segments. Julio must still judge lip-sync, accent, naturalness.
-- [ ] B. Base-video approach: Julio records a 20-30 s natural talking clip; put new speech on it via InfiniteTalk video-to-video and/or MuseTalk (real head motion for free). Needs Julio's recording.
+- [x] B. Base-video approach via **MuseTalk v1.5** (MIT) on Julio's webcam clip: works on GB10. Output `phase0/out/mt_A_final.mp4` (768x768, 25 fps, 37.4 s, one continuous take, no segment seams, real head motion). Weaknesses: webcam clip is dark/yellow, mouth patch is soft (256 px native), moustache not preserved around lips, occasional jitter. Julio must judge lip-sync, accent, naturalness. See §16.
 - [ ] C. InfiniteTalk audio-only on GB10 (14B; try fp8, `--mode streaming`, 480P) as quality ceiling; record speed and drift.
 - [ ] D. EchoMimic Long Video CFG with longer windows (e.g. 161+ frames) vs. 81-frame re-anchored.
 - [ ] E. Persistent worker (load weights once, loop segments); ~40% of wall time is model load today.
@@ -251,3 +253,14 @@ Duplicates across LM Studio and Ollama: gpt-oss-120b, Qwen3.5-35B, Ministral-3-1
 - Harmless warning: `low_cpu_mem_usage ... load_model_dict_into_meta` (diffusers version drift); weights load with 0 missing/unexpected keys.
 - Weights: `phase0/weights/` (not in git; ~23 GB). Download script `phase0/scripts/hf_download.py`.
 - To audit: LICENSE of Wan2.1-Fun (Apache-2.0 per HF card), echomimic_v3 repo (Apache-2.0), chinese-wav2vec2-base (MIT), imageio-ffmpeg/moviepy deps.
+
+## 16. MuseTalk base-video pipeline (2026-10-13)
+
+Why: Julio rejected the EchoMimic segment approach (different head position at each segment start, poor movement). The base-video approach keeps **his real head motion** and only re-syncs the mouth to the new speech.
+
+- Upstream: `TMElyralab/MuseTalk` commit `0a89dec` cloned to `phase0/musetalk` (git-ignored). Patch: `phase0/patches/musetalk_no_mmpose.patch` (apply with `git apply`): replaces mmpose/DWPose (no aarch64 build) with `face-alignment` 68-pt landmarks, and loads the legacy resnet18 checkpoint with `weights_only=False` (file from download.pytorch.org).
+- Image: `phase0/docker/musetalk/Dockerfile` -> `avatar-musetalk:p0` (NGC 25.10, diffusers 0.35.2, transformers 4.57.1, torchao and non-headless opencv removed).
+- Weights: `phase0/scripts/mt_download.py` -> `phase0/weights/musetalk` (3.8 GB: MuseTalk v1.5 unet, sd-vae-ft-mse, whisper-tiny, face-parse-bisent 79999_iter.pth from Google Drive id `154JgKpz...`, resnet18). face-alignment fetches S3FD + 2DFAN4 from adrianbulat.com at first run (runtime network dependency). **Licence audit pending** for face-parse-bisent and S3FD/FAN weights.
+- Base video: webcam clip 2048x1536 15 fps -> `crop=1100:1100:330:0`, scale 768, `minterpolate` to 25 fps (`phase0/in/base_768_25fps.mp4`, first 39 s).
+- Run: `phase0/scripts/musetalk_run.sh <task.yaml in phase0/in> <result_dir>`; yaml has `video_path` and `audio_path` (16 kHz wav) under `task_0`.
+- Voice: new reference from the webcam clip (Julio speaks English with a **Spanish accent**; he said this accent is wanted). Chatterbox clones with `scripts/tts_clone.py`: `phase0/out/clone_{vA_cfg0,vA_cfg3,vB_cfg0,vB_cfg3}.wav` (refs: 0-15 s and 20-35 s of the clip; cfg_weight 0 / 0.3). MuseTalk run used `vA_cfg0`. **Julio to choose the best-sounding variant.**

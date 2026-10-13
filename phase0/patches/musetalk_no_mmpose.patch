@@ -1,0 +1,74 @@
+diff --git a/musetalk/utils/face_parsing/resnet.py b/musetalk/utils/face_parsing/resnet.py
+index e2e5d87..b541fe8 100755
+--- a/musetalk/utils/face_parsing/resnet.py
++++ b/musetalk/utils/face_parsing/resnet.py
+@@ -80,7 +80,7 @@ class Resnet18(nn.Module):
+         return feat8, feat16, feat32
+ 
+     def init_weight(self, model_path):
+-        state_dict = torch.load(model_path) #modelzoo.load_url(resnet18_url)
++        state_dict = torch.load(model_path, weights_only=False)  # legacy .tar resnet18 from download.pytorch.org (trusted)
+         self_state_dict = self.state_dict()
+         for k, v in state_dict.items():
+             if 'fc' in k: continue
+diff --git a/musetalk/utils/preprocessing.py b/musetalk/utils/preprocessing.py
+index 978480c..b2d6589 100755
+--- a/musetalk/utils/preprocessing.py
++++ b/musetalk/utils/preprocessing.py
+@@ -7,16 +7,19 @@ import cv2
+ import pickle
+ import os
+ import json
+-from mmpose.apis import inference_topdown, init_model
+-from mmpose.structures import merge_data_samples
++import face_alignment as _fa_lib  # replaces mmpose/DWPose (no aarch64 build): 68 FAN landmarks
+ import torch
+ from tqdm import tqdm
+ 
+ # initialize the mmpose model
+ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+-config_file = './musetalk/utils/dwpose/rtmpose-l_8xb32-270e_coco-ubody-wholebody-384x288.py'
+-checkpoint_file = './models/dwpose/dw-ll_ucoco_384.pth'
+-model = init_model(config_file, checkpoint_file, device=device)
++_fan = _fa_lib.FaceAlignment(_fa_lib.LandmarksType.TWO_D, flip_input=False, device=str(device))
++
++def _landmarks68(img_bgr):
++    pts = _fan.get_landmarks(img_bgr[..., ::-1].copy())
++    if not pts:
++        return None
++    return np.asarray(pts[0]).astype(np.int32)  # (68, 2), same iBUG order as DWPose face keypoints
+ 
+ # initialize the face detection model
+ device = "cuda" if torch.cuda.is_available() else "cpu"
+@@ -53,11 +56,10 @@ def get_bbox_range(img_list,upperbondrange =0):
+     average_range_minus = []
+     average_range_plus = []
+     for fb in tqdm(batches):
+-        results = inference_topdown(model, np.asarray(fb)[0])
+-        results = merge_data_samples(results)
+-        keypoints = results.pred_instances.keypoints
+-        face_land_mark= keypoints[0][23:91]
+-        face_land_mark = face_land_mark.astype(np.int32)
++        face_land_mark = _landmarks68(np.asarray(fb)[0])
++        if face_land_mark is None:
++            coords_list += [coord_placeholder]
++            continue
+         
+         # get bounding boxes by face detetion
+         bbox = fa.get_detections_for_batch(np.asarray(fb))
+@@ -94,11 +96,10 @@ def get_landmark_and_bbox(img_list,upperbondrange =0):
+     average_range_minus = []
+     average_range_plus = []
+     for fb in tqdm(batches):
+-        results = inference_topdown(model, np.asarray(fb)[0])
+-        results = merge_data_samples(results)
+-        keypoints = results.pred_instances.keypoints
+-        face_land_mark= keypoints[0][23:91]
+-        face_land_mark = face_land_mark.astype(np.int32)
++        face_land_mark = _landmarks68(np.asarray(fb)[0])
++        if face_land_mark is None:
++            coords_list += [coord_placeholder]
++            continue
+         
+         # get bounding boxes by face detetion
+         bbox = fa.get_detections_for_batch(np.asarray(fb))

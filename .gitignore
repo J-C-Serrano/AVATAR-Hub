@@ -21,3 +21,6 @@ __pycache__/
 *.wav
 *.mp4
 *.m4a
+
+# upstream MuseTalk clone (pinned in HANDOVER.md §16, patch in phase0/patches)
+phase0/musetalk/
