@@ -84,3 +84,40 @@ def loop(seconds, fps=30, amp=1.0, seed=5, blink_every=(2.8, 5.0), smiles=0, smi
     z = np.zeros(N)
     return {"pitch": amp * pitch, "yaw": amp * yaw, "roll": amp * roll, "blink": blink, "smile": smile, "melody": z, "lean": z,
             "starts": [0], "beats": 0, "fps": fps, "n": N}
+
+
+def loop_nodtilt(seconds, fps=30, seed=7, smile=0.35, nod_deg=5.0, tilt_deg=4.5, yaw_deg=1.2,
+                 nod_every=(1.6, 3.2), blink_every=(2.0, 3.6)):
+    """Seamless loop without 'floating': held sideways tilts (ease in, hold, ease out), discrete nods,
+    almost no turning, constant slight smile. Starts and ends at neutral so the seam is invisible."""
+    rng = np.random.default_rng(seed)
+    N = int(round(seconds * fps)); tt = np.arange(N) / fps
+    ease = lambda u: 0.5 - 0.5 * np.cos(np.pi * np.clip(u, 0, 1))
+    # tilts: alternate sides, each = 0.6 s ease in, 1.5-3 s hold, 0.6 s ease out, 0.5-1.5 s neutral
+    roll = np.zeros(N); t = rng.uniform(0.4, 1.0); side = rng.choice([-1, 1])
+    while True:
+        a, hold, b = 0.6, rng.uniform(1.5, 3.0), 0.6
+        if t + a + hold + b > seconds - 0.4: break
+        amp = side * tilt_deg * rng.uniform(0.7, 1.0)
+        m1 = (tt >= t) & (tt < t + a); roll[m1] = amp * ease((tt[m1] - t) / a)
+        m2 = (tt >= t + a) & (tt < t + a + hold); roll[m2] = amp
+        m3 = (tt >= t + a + hold) & (tt < t + a + hold + b); roll[m3] = amp * (1 - ease((tt[m3] - t - a - hold) / b))
+        t += a + hold + b + rng.uniform(0.5, 1.5); side = -side
+    # nods: quick down-and-up (0.45-0.7 s), sometimes a double nod
+    pitch = np.zeros(N); t = rng.uniform(0.6, 1.2)
+    while t < seconds - 1.0:
+        for rep in range(2 if rng.random() < 0.3 else 1):
+            d = rng.uniform(0.45, 0.7); m = (tt >= t) & (tt < t + d)
+            pitch[m] += nod_deg * rng.uniform(0.6, 1.0) * np.sin(np.pi * (tt[m] - t) / d)
+            t += d + 0.05
+        t += rng.uniform(*nod_every)
+    # tiny periodic turn (whole cycles over the loop) + blinks off the seam
+    yaw = yaw_deg * np.sin(2 * np.pi * max(1, round(seconds / 8)) * np.arange(N) / N + rng.uniform(0, 6.28))
+    yaw -= yaw[0] * np.cos(np.pi * np.arange(N) / N) * 0  # keep (periodic already)
+    blink = np.zeros(N); f = int(rng.uniform(0.8, 1.4) * fps)
+    while f < N - int(0.6 * fps):
+        for d_, v in enumerate((0.6, 1.0, 1.0, 0.5)): blink[f + d_] = v
+        f += int(rng.uniform(*blink_every) * fps)
+    z = np.zeros(N)
+    return {"pitch": pitch, "yaw": yaw, "roll": roll, "blink": blink, "smile": np.full(N, smile), "melody": z, "lean": z,
+            "starts": [0], "beats": 0, "fps": fps, "n": N}

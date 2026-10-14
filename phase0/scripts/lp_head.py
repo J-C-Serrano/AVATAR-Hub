@@ -21,6 +21,7 @@ ap.add_argument("--amp", type=float, default=1.0); ap.add_argument("--debug", ac
 ap.add_argument("--loop", type=float, default=0, help="seconds: render a seamless idle loop instead of prosody-driven motion")
 ap.add_argument("--fps", type=int, default=30); ap.add_argument("--seed", type=int, default=5)
 ap.add_argument("--blink_min", type=float, default=2.8); ap.add_argument("--blink_max", type=float, default=5.0)
+ap.add_argument("--style", default="float", choices=["float", "nodtilt"])
 ap.add_argument("--smiles", type=int, default=0, help="number of smiles per loop"); ap.add_argument("--smile_base", type=float, default=0.0)
 ap.add_argument("--scale", type=float, default=2.6); ap.add_argument("--eye_open", type=float, default=0.0)
 A = ap.parse_args()
@@ -75,7 +76,7 @@ with torch.no_grad():
         for name, args in {"p+": (12, 0, 0, 0), "p-": (-12, 0, 0, 0), "y+": (0, 12, 0, 0), "r+": (0, 0, 10, 0), "blink": (0, 0, 0, 1), "smile": (0, 0, 0, 0, 1.0)}.items():
             cv2.imwrite(os.path.join(A.out, f"dbg_{name}.png"), cv2.cvtColor(render(*args), cv2.COLOR_RGB2BGR))
         sys.exit()
-    M = HM.loop(A.loop, A.fps, A.amp, A.seed, (A.blink_min, A.blink_max), A.smiles, A.smile_base) if A.loop > 0 else HM.compute(json.load(open(A.prosody)), A.amp)
+    M = HM.loop_nodtilt(A.loop, A.fps, A.seed, A.smile_base or 0.35) if (A.loop > 0 and A.style == "nodtilt") else HM.loop(A.loop, A.fps, A.amp, A.seed, (A.blink_min, A.blink_max), A.smiles, A.smile_base) if A.loop > 0 else HM.compute(json.load(open(A.prosody)), A.amp)
     # head_motion pitch: + = nod down. LivePortrait sign mapped by PITCH_SIGN (set after debug check)
     PITCH_SIGN, YAW_SIGN, ROLL_SIGN = float(os.environ.get("PS", 1)), float(os.environ.get("YS", 1)), float(os.environ.get("RS", 1))
     import time; t0 = time.time()
