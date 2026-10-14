@@ -27,3 +27,6 @@ phase0/musetalk/
 phase0/progress/
 phase0/infinitetalk/
 phase0/poc3d/
+
+# app data: voice profiles, recordings, generated audio (personal) - never commit
+data/
