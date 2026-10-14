@@ -317,3 +317,10 @@ Why: Julio rejected the EchoMimic segment approach (different head position at e
 - **Speed:** 37 s rendered in 71 s (0.063 s/frame, ~2x faster than real time, single process). 20 h ≈ 38 h single process; LAM/A2E not needed. Voice 20 h ≈ 11 h.
 - **Output:** `out/poc3d/wii_lecture_demo.mp4` (1920x1080, 37 s).
 - **Next:** Julio's stylized character (photo → concept art → 3D → rig, only ~6 mouth shapes needed); LLM gesture tagging; more gestures; parallel renders; batch pipeline per lecture.
+
+## 22. Portrait mode 2026-10-14 (Julio: "i dont need mouth moving just head synchronized melodically with the voice and just a portrait shot chest up")
+
+- **New default look:** chest-up portrait, mouth closed (slight smile), no arm gestures; head moves with the voice's melody.
+- **Pipeline:** `scripts/prosody.py` (librosa pYIN pitch in semitones vs speaker median, RMS energy, onset strength, pauses >250 ms; runs in `avatar-chatterbox:p0`) → `scripts/blender_portrait.py`: chin follows pitch contour (high-pass vs 1.5 s baseline, -2.2°/semitone, x- = chin up), stressed-syllable beats → ~300 ms nods (onset peaks with energy, ≥0.35 s apart), new turn/tilt target per phrase (eased), tilt from intonation slope, settle in pauses, blinks random + at phrase starts, brows lift on high pitch, breathing. Head bone axes: x+ nod down, x- chin up, y turn, z tilt (`scripts/blender_headaxes.py`). Compose with `scripts/compose_lecture.py`.
+- **Result:** `out/poc3d/portrait_lecture_demo.mp4` (37 s): 19 phrases, 41 beats, head range about ±7°. Render 0.066 s/frame at 480x480 (37 s in 74 s).
+- **Character work now simpler:** no mouth shapes needed at all; only rig (neck/head) + optional blink/brow shapes.
