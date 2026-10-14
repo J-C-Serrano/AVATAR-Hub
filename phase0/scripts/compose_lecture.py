@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Compose a lecture segment: slide (1920x1080) + avatar RGBA frames (corner) + voice + word-timed captions + AI badge.
-usage: compose_lecture.py --slide slide.json --frames out/poc3d/wii/frames --wav in/speech.wav --words in/words.json --out out.mp4
+usage: compose_lecture.py --slide slide.json --frames <frames dir | loop.mp4 (repeated to fill the audio)> --wav in/speech.wav --words in/words.json --out out.mp4
 slide.json: {"title": str, "bullets": [str], "footer": str}"""
 import argparse, json, os, subprocess, tempfile
 from PIL import Image, ImageDraw, ImageFont
@@ -58,7 +58,8 @@ for i, ln in enumerate(lines):
 ass_path = os.path.join(tmp, "cap.ass"); open(ass_path, "w").write("\n".join(ass))
 
 cmd = ["ffmpeg", "-loglevel", "error", "-y", "-loop", "1", "-framerate", str(A.fps), "-i", slide_png,
-       "-framerate", str(A.fps), "-i", os.path.join(A.frames, "f_%04d.png"), "-i", A.wav,
+       *(["-stream_loop", "-1", "-i", A.frames] if A.frames.endswith(".mp4") else ["-framerate", str(A.fps), "-i", os.path.join(A.frames, "f_%04d.png")]),
+       "-i", A.wav,
        "-loop", "1", "-i", disc_png, "-loop", "1", "-i", mask_png,
        "-filter_complex", f"[1]scale={a}:{a}[av];[3][av]overlay=0:0:shortest=1[c];[4]format=gray[m];[c][m]alphamerge[circ];"
                           f"[0][circ]overlay={px}:{py}:shortest=1,subtitles={ass_path}:fontsdir={F}[v]",

@@ -325,3 +325,13 @@ Why: Julio rejected the EchoMimic segment approach (different head position at e
 - **Result:** `out/poc3d/portrait_lecture_demo.mp4` (37 s): 19 phrases, 41 beats, head range about ±7°. Render 0.066 s/frame at 480x480 (37 s in 74 s).
 - **Character work now simpler:** no mouth shapes needed at all; only rig (neck/head) + optional blink/brow shapes.
 - **Update (Julio: 1/3 size, circle):** avatar now a 160 px circle bottom-right (orange ring, "AI avatar" badge above), rendered at 320x320 (`--res 320 --dist 0.68 --dz 0.04`, head-and-shoulders) and downscaled; `compose_lecture.py` masks it with a circle (disc + alphamerge). 0.052 s/frame at 320² → 20 h ≈ 1.3 days single process. Output `out/poc3d/portrait160_circle_demo.mp4`.
+
+## 23. Photo avatar with LivePortrait + seamless loop 2026-10-14
+
+- **Julio:** keep the 3D circle for now (may develop animations later); do the same with video: real photo, only head moves; then: "instead of making a live animation we just generate a loop video of the live portrait that looks smooth and loops indefinitely".
+- **LivePortrait (MIT code + weights, `KwaiVGI/LivePortrait`, commit 9b294b3 in `phase0/poc3d/liveportrait`, git-ignored)**: weights `weights/liveportrait/liveportrait/{base_models,retargeting_models,landmark.onnx}` (InsightFace weights NOT downloaded/used). One-time crop via face-alignment 68 pts (BSD) + LivePortrait `crop_image`; `landmark.onnx` (onnxruntime CPU) for 203 pts → eye ratio → blinks via `retarget_eye`. Head re-posed with `get_rotation_matrix` deltas (pitch + = nod down, matches head_motion), `stitching`, `warp_decode`. Script `scripts/lp_head.py`, runner `scripts/lp_run.sh`, image `avatar-liveportrait:p0` (`docker/liveportrait/Dockerfile`, FROM avatar-musetalk + onnxruntime etc.).
+- **Shared motion:** `scripts/head_motion.py` — `compute(prosody)` (voice-synced, also used by `blender_portrait.py`) and `loop(seconds)` (sum of sines with whole cycles per loop → seamless; blinks kept off the seam).
+- **Source still:** `in/lp_src_full.png` = frame at 21.4 s of `samples/Julio Serrano/2026-10-14-090944.webm` (mouth closed, frontal). Crop `--scale 2.0` fills the 160 px circle.
+- **Speed:** 0.08 s/frame. Voice-synced 37 s: 89 s (`out/lp_head/`). **20 s loop: 49 s once**, then reused for any lecture length → per-lecture avatar cost ≈ 0 (only ffmpeg compositing).
+- **Loop quality:** PNG seam diff 0.48 vs mean frame step 0.55 (invisible); mp4 keyframe adds ~1.5/255 at the seam (invisible).
+- **Outputs:** `out/lp_loop/avatar_loop_20s.mp4`, demo `out/lp_loop_circle_demo.mp4` (37 s voice, loop repeats at 20 s). `compose_lecture.py --frames` now accepts a loop .mp4 (`-stream_loop -1`).
