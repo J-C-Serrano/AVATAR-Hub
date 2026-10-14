@@ -283,3 +283,18 @@ Why: Julio rejected the EchoMimic segment approach (different head position at e
 - **Speed on GB10 (480 bucket, 640x640, 81-frame chunks):** model load ~9 min. Full recipe (40 steps, 3 CFG passes) ~130-145 s/step → ~1.5 h per 3 s chunk: unusable. Do NOT pass `--num_persistent_param_in_dit 0` (forces offload). With lightx2v LoRA: `--lora_scale 1.0 --sample_text_guide_scale 1.0 --sample_audio_guide_scale 2.0 --sample_steps 6 --sample_shift 2 --offload_model False` → ~86 s/step (2 passes), ~9.5 min per chunk (~2.9 s new video) ≈ 3.3 min compute per second of video.
 - **Quality (`out/it_lx3.mp4`, 4 s, image→video):** far better than MuseTalk/EchoMimic: natural head motion, beard/glasses kept, mouth opens with teeth. Defect: hallucinated waving hand in first frames (image mode). Next: video→video mode on the real clip (`in/it_v2v20.json`, `in/it_src640.mp4` = crop 900x900+563+330, 25 fps, audio `in/it_a20.wav` = first 20 s of clone vA) → `out/it_v2v20.mp4`.
 - **Speed-up ideas not yet tried:** 4 steps instead of 6; persistent worker (avoid 9 min reload); fp8 weights; smaller bucket; TeaCache with LoRA.
+
+## 19. Idea 2026-10-14: stylized 3D ("Toy Story") avatar instead of video generation
+
+**Why:** 20 h of lectures; InfiniteTalk needs ~3.5 Spark-min per second of video (5 min/lecture ≈ 17.5 h/lecture ≈ 2-3 weeks total). A rigged 3D character driven by blendshapes renders in (near) real time, never drifts, lip-syncs any language, and is editable.
+
+**Pipeline (proposal):**
+1. Character (one-time): photo → stylized concept art (permissive image model, e.g. Qwen-Image-Edit / FLUX.1-schnell, licence to verify) → image-to-3D TRELLIS.2 (MIT) → retopology (needed for facial deformation) → rig (Rigify in Blender, or UniRig MIT code) → 52 ARKit shape keys (ARKit Creator Blender add-on (open source) or paid ShapeKeyGen/Faceit). Realistic fallback: commission a 3D artist for a Pixar-style Julio with ARKit 52 (~€300-1500, assumption).
+2. Voice: Chatterbox clone (existing; 20 h ≈ 11 h on Spark).
+3. Face from audio → ARKit blendshape curves: NVIDIA Audio2Face-3D (SDK MIT, models NVIDIA Open Model License: commercial OK but not OSI; aarch64 unverified) or LAM Audio2Expression (Apache-2.0 badge, ARKit 52). Fallback: Rhubarb Lip Sync visemes (MIT). TalkingHead (met4citizen, MIT, three.js) has built-in Finnish/English lip-sync.
+4. Body: library of idle/talk/gesture clips (Mixamo, Adobe terms) + procedural head sway, blinks, saccades. Avoid EMAGE/SMPL-X/FLAME-based models (non-commercial licences) unless licence checked.
+5. Render: Blender EEVEE scripted (offline, ~0.2-0.5 s/frame est.) or three.js/TalkingHead headless capture (real time, parallel instances). Compose slides + avatar + subtitles with ffmpeg; modular segments.
+
+**Avoid:** Hunyuan3D (licence excludes EU/UK/KR); Ready Player Me (shut down 31 Jan 2026); SMPL-X/FLAME weights (non-commercial).
+**GitHub precedents:** met4citizen/TalkingHead; semperai/amica (MIT, VRM); pixiv/ChatVRM; asanchezyali/talking-avatar-with-ai (Rhubarb + RPM + R3F); HumanAIGC-Engineering/OpenAvatarChat + aigc3d/LAM (Gaussian head + Audio2Expression); 0xGF/avatar-3d (photo → Pixar-style image → TRELLIS GLB via paid Replicate APIs).
+**Status:** brainstorm; awaiting Julio's decisions (style, artist budget, bust vs full body, on screen always vs clips).
