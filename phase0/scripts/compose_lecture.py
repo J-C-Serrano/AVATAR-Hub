@@ -25,10 +25,20 @@ for b in s["bullets"]:
     d.text((140, y), b, font=font("DejaVuSans.ttf", 46), fill=(30, 35, 45)); y += 100
 d.text((80, H - 60), s.get("footer", ""), font=font("DejaVuSans.ttf", 26), fill=(120, 125, 135))
 # avatar panel (rounded) + AI badge
-px, py, a = W - A.avatar - 40, H - A.avatar - 20, A.avatar
-d.rounded_rectangle([px - 10, py - 10, px + a + 10, H - 10], radius=28, fill=(205, 215, 230))
-d.rounded_rectangle([px + 10, py + 6, px + 190, py + 50], radius=12, fill=(22, 52, 92))
-d.text((px + 24, py + 12), "AI avatar", font=font("DejaVuSans-Bold.ttf", 26), fill="white")
+px, py, a = W - A.avatar - 50, H - A.avatar - 40, A.avatar
+# circular avatar: ring on the slide, disc background + circle mask applied in ffmpeg
+ring = max(4, a // 40)
+d.ellipse([px - ring - 2, py - ring - 2, px + a + ring + 2, py + a + ring + 2], fill=(240, 160, 40))
+SS = 4  # supersampled masks for smooth edges
+disc = Image.new("RGBA", (a * SS, a * SS), (0, 0, 0, 0)); ImageDraw.Draw(disc).ellipse([0, 0, a * SS - 1, a * SS - 1], fill=(205, 215, 230, 255))
+mask = Image.new("L", (a * SS, a * SS), 0); ImageDraw.Draw(mask).ellipse([0, 0, a * SS - 1, a * SS - 1], fill=255)
+disc_png, mask_png = os.path.join(tmp, "disc.png"), os.path.join(tmp, "mask.png")
+disc.resize((a, a), Image.LANCZOS).save(disc_png); mask.resize((a, a), Image.LANCZOS).save(mask_png)
+bf = font("DejaVuSans-Bold.ttf", 22); label = "AI avatar"
+bw = d.textlength(label, font=bf) + 24
+bx, by = px + a / 2 - bw / 2, py - ring - 48            # badge centred above the circle
+d.rounded_rectangle([bx, by, bx + bw, by + 36], radius=10, fill=(22, 52, 92))
+d.text((bx + 12, by + 5), label, font=bf, fill="white")
 slide_png = os.path.join(tmp, "slide.png"); im.save(slide_png)
 
 # --- captions (ASS), lines of <= 7 words, broken at sentence ends ---
@@ -49,6 +59,8 @@ ass_path = os.path.join(tmp, "cap.ass"); open(ass_path, "w").write("\n".join(ass
 
 cmd = ["ffmpeg", "-loglevel", "error", "-y", "-loop", "1", "-framerate", str(A.fps), "-i", slide_png,
        "-framerate", str(A.fps), "-i", os.path.join(A.frames, "f_%04d.png"), "-i", A.wav,
-       "-filter_complex", f"[1]scale={A.avatar}:{A.avatar}[av];[0][av]overlay={px}:{py}:shortest=1,subtitles={ass_path}:fontsdir={F}[v]",
+       "-loop", "1", "-i", disc_png, "-loop", "1", "-i", mask_png,
+       "-filter_complex", f"[1]scale={a}:{a}[av];[3][av]overlay=0:0:shortest=1[c];[4]format=gray[m];[c][m]alphamerge[circ];"
+                          f"[0][circ]overlay={px}:{py}:shortest=1,subtitles={ass_path}:fontsdir={F}[v]",
        "-map", "[v]", "-map", "2:a", "-c:v", "libx264", "-crf", "18", "-pix_fmt", "yuv420p", "-c:a", "aac", "-b:a", "160k", "-shortest", A.out]
 subprocess.run(cmd, check=True); print("WROTE", A.out)

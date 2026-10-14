@@ -78,7 +78,7 @@ meshes = [o for o in sc.objects if o.type == "MESH" and o.data.shape_keys]
 head_w = arm.matrix_world @ pb["Head"].head
 cd = bpy.data.cameras.new("cam"); cd.lens = 50
 cam = bpy.data.objects.new("cam", cd); sc.collection.objects.link(cam); sc.camera = cam
-target = head_w + Vector((0, 0, 0.0)); cam.location = target + Vector((0, -0.98, 0.03))
+DIST = arg("--dist", 0.98, float); target = head_w + Vector((0, 0, arg("--dz", 0.0, float))); cam.location = target + Vector((0, -DIST, 0.03))
 cam.rotation_euler = (math.radians(88), 0, 0)
 def light(name, loc, energy, size, color):
     l = bpy.data.lights.new(name, "AREA"); l.energy = energy; l.color = color; l.size = size
