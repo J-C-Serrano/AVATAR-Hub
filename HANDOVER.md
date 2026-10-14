@@ -264,3 +264,11 @@ Why: Julio rejected the EchoMimic segment approach (different head position at e
 - Base video: webcam clip 2048x1536 15 fps -> `crop=1100:1100:330:0`, scale 768, `minterpolate` to 25 fps (`phase0/in/base_768_25fps.mp4`, first 39 s).
 - Run: `phase0/scripts/musetalk_run.sh <task.yaml in phase0/in> <result_dir>`; yaml has `video_path` and `audio_path` (16 kHz wav) under `task_0`.
 - Voice: new reference from the webcam clip (Julio speaks English with a **Spanish accent**; he said this accent is wanted). Chatterbox clones with `scripts/tts_clone.py`: `phase0/out/clone_{vA_cfg0,vA_cfg3,vB_cfg0,vB_cfg3}.wav` (refs: 0-15 s and 20-35 s of the clip; cfg_weight 0 / 0.3). MuseTalk run used `vA_cfg0`. **Julio to choose the best-sounding variant.**
+
+## 17. Session 2026-10-14: lip fix, grading, fi/sv
+
+- **Julio's verdict:** MuseTalk base-video result is the right approach (continuous), but "only the lips are very bad"; voice variant `vA_cfg0` is the best of the four; a longer reference (up to 30 min) may improve the voice later (not yet provided; task H).
+- **Diagnosis (frame zoom):** MuseTalk's 256 px mouth patch is smooth and hairless (no moustache/beard texture), pinker than the dark webcam face; looks pasted.
+- **Fix:** GFPGAN v1.4 (Apache-2.0) face restoration as post-process (`phase0/scripts/restore_face.py`, `restore_run.sh`, image `avatar-restore:p0` from `docker/restore/Dockerfile`, weights `weights/gfpgan/GFPGANv1.4.pth`, weight 0.5, 80 % blend) + ffmpeg grade (gamma 1.3, sat 0.9, slight blue, unsharp). Lips and nose are visibly crisper and the image is brighter. Remaining limits: still somewhat plastic skin, source webcam is low quality, moustache not fully restored. ~3.5 min per 37 s on GB10.
+- **Outputs (`phase0/out/`, git-ignored):** `mt_A_v2_graded30.mp4` (30 s, en), `mt_fi_v2.mp4`, `mt_sv_v2.mp4` (~20 s each; clones `clone_{fi,sv}_vA.wav`, Whisper-verified intelligible; script `scripts/tts_multi.py`, task `in/mt_task_fisv.yaml`).
+- **Not done:** InfiniteTalk v2v test (large download, backlog C), accent fine-tune on 30 min (H, needs Julio's recording), licence audit of GFPGAN/facexlib deps (I): GFPGAN code Apache-2.0, facexlib MIT, basicsr Apache-2.0; weights licence to confirm.
