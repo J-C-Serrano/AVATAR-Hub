@@ -22,7 +22,14 @@ def frac(t):
         if k == "log":
             s = open(os.path.join(P0, t["path"]), errors="ignore").read().replace("\r", "\n")
             m = re.findall(t.get("regex", r"(\d+)/(\d+)"), s)
-            return (min(1, int(m[-1][0]) / int(m[-1][1])) if m else 0), ""
+            if not m: return 0, ""
+            cur = int(m[-1][0]) / int(m[-1][1]); R = t.get("repeat", 1)   # repeat = number of tqdm loops (e.g. chunks)
+            full = len([x for x in m if x[0] == x[1]]) - (1 if cur >= 1 else 0)
+            # count distinct completed loops: a finished loop prints n/n at least once
+            done = len(re.findall(r"(?<!\d)(\d+)/\1 \[", s)) if R > 1 else 0
+            done = min(done, R)
+            f = (done + (cur if cur < 1 else 0)) / R
+            return min(1, f), (f"chunk {min(done + 1, R)}/{R}" if R > 1 else "")
     except Exception: pass
     return 0, ""
 def bar(f, w=34): n = int(f * w); return "█" * n + "░" * (w - n)
