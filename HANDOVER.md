@@ -298,3 +298,12 @@ Why: Julio rejected the EchoMimic segment approach (different head position at e
 **Avoid:** Hunyuan3D (licence excludes EU/UK/KR); Ready Player Me (shut down 31 Jan 2026); SMPL-X/FLAME weights (non-commercial).
 **GitHub precedents:** met4citizen/TalkingHead; semperai/amica (MIT, VRM); pixiv/ChatVRM; asanchezyali/talking-avatar-with-ai (Rhubarb + RPM + R3F); HumanAIGC-Engineering/OpenAvatarChat + aigc3d/LAM (Gaussian head + Audio2Expression); 0xGF/avatar-3d (photo → Pixar-style image → TRELLIS GLB via paid Replicate APIs).
 **Status:** brainstorm; awaiting Julio's decisions (style, artist budget, bust vs full body, on screen always vs clips).
+
+## 20. Decision + proof of concept 2026-10-14: stylized 3D avatar
+
+- **Decision (Julio):** stylized/cartoon, NOT semi-realistic: "it is an avatar we want to be obvious that is ai".
+- **PoC pipeline (works end to end on the Spark):** cloned voice wav → **LAM Audio2Expression** (Apache-2.0; repo `aigc3d/LAM_Audio2Expression` commit in `phase0/poc3d/` (git-ignored), weights `weights/lam_a2e` from HF `3DAIGC/LAM_audio2exp`, patch `phase0/patches/lam_a2e_eager.patch`; runs in `avatar-chatterbox:p0` because it needs torchaudio) → ARKit-52 JSON @30 fps (`scripts/a2e_run.sh`; **37 s audio in 0.7 s**) → **Blender 4.0.2** (Ubuntu arm64 apt package in image `avatar-blender:p0`, `docker/blender/Dockerfile`; no official aarch64 Linux build) with `scripts/blender_avatar.py` / `scripts/blender_run.sh`: imports GLB, keys shape keys (mouth gain 1.4), procedural neck/head motion (smooth noise + speech-energy nods), breathing, 3-point lights, EEVEE 1080x1080 → ffmpeg mux.
+- **Speed:** ~0.2 s/frame at 1080x1080 EEVEE alone (0.42 s/frame while InfiniteTalk shared the GPU). 20 h at 30 fps = 2.16 M frames ≈ 5 days at 0.2 s (less at lower res / corner overlay; parallel instances possible).
+- **Test character:** `mpfb.glb` from met4citizen/TalkingHead (CC0, MakeHuman/MPFB, ARKit + Oculus visemes). Realistic, used only to test lip-sync + speed. Output `out/poc3d/poc_mpfb_37s.mp4`.
+- **Note:** LAM-A2E blendshapes are tuned to FLAME topology; jawOpen subdued (max ~0.39) → gain applied. No head rotation in its output (procedural instead).
+- **Next:** stylized Julio character: photo → stylized concept images (Julio picks) → TRELLIS.2 → retopo/rig/ARKit-52 (or artist) → same pipeline. Compare NVIDIA Audio2Face-3D and Rhubarb for lip quality. Add eye saccades, gestures (Mixamo-style clips), slide compositing.

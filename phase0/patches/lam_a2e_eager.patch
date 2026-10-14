@@ -1,0 +1,13 @@
+diff --git a/models/network.py b/models/network.py
+index cdedbed..8ac215d 100644
+--- a/models/network.py
++++ b/models/network.py
+@@ -40,7 +40,7 @@ class Audio2Expression(nn.Module):
+             if os.path.exists(pretrained_encoder_path):
+                 self.audio_encoder = Wav2Vec2Model.from_pretrained(pretrained_encoder_path)
+             else:
+-                config = Wav2Vec2Config.from_pretrained(wav2vec2_config_path)
++                config = Wav2Vec2Config.from_pretrained(wav2vec2_config_path, attn_implementation="eager")
+                 self.audio_encoder = Wav2Vec2Model(config)
+             encoder_output_dim = 768
+         elif pretrained_encoder_type == 'wavlm':

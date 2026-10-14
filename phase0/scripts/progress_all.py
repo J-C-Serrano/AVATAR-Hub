@@ -24,11 +24,10 @@ def frac(t):
             m = re.findall(t.get("regex", r"(\d+)/(\d+)"), s)
             if not m: return 0, ""
             cur = int(m[-1][0]) / int(m[-1][1]); R = t.get("repeat", 1)   # repeat = number of tqdm loops (e.g. chunks)
-            full = len([x for x in m if x[0] == x[1]]) - (1 if cur >= 1 else 0)
-            # count distinct completed loops: a finished loop prints n/n at least once
-            done = len(re.findall(r"(?<!\d)(\d+)/\1 \[", s)) if R > 1 else 0
-            done = min(done, R)
-            f = (done + (cur if cur < 1 else 0)) / R
+            tot = m[-1][1]
+            starts = len(re.findall(r"(?<!\d)1/" + tot + r" \[", s))   # each loop prints "1/N [" exactly once
+            done = min(max(starts - 1, 0) + (1 if cur >= 1 else 0), R) if R > 1 else 0
+            f = (done + (cur if cur < 1 else 0)) / R if R > 1 else cur
             return min(1, f), (f"chunk {min(done + 1, R)}/{R}" if R > 1 else "")
     except Exception: pass
     return 0, ""
