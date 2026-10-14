@@ -308,3 +308,12 @@ Why: Julio rejected the EchoMimic segment approach (different head position at e
 - **Note:** LAM-A2E blendshapes are tuned to FLAME topology; jawOpen subdued (max ~0.39) → gain applied. No head rotation in its output (procedural instead).
 - **Next:** stylized Julio character: photo → stylized concept images (Julio picks) → TRELLIS.2 → retopo/rig/ARKit-52 (or artist) → same pipeline. Compare NVIDIA Audio2Face-3D and Rhubarb for lip quality. Add eye saccades, gestures (Mixamo-style clips), slide compositing.
 - **InfiniteTalk v2v 20 s result (`out/it_v2v20.mp4`, 640x640, 25 fps):** best realistic result so far: continuous, natural head motion and hand movement from the source clip, beard/glasses kept, mouth opens with teeth. Faces a bit red/saturated. Took ~70 min (slowed while Blender shared the GPU). Render-speed benchmarks for the 3D route (150 frames, GPU shared): EEVEE 480² 0.14 s/frame, Workbench 480² 0.077 s/frame, Workbench 1080² 0.19 s/frame.
+
+## 21. Wii-style lecture test 2026-10-14 (Julio: "go for the test")
+
+- **Concept (Julio):** avatar does not need real lip-sync; simple mouth + head + hand gestures synchronised to the text, like a Wii character; 480x480 squares.
+- **Pipeline:** cloned voice → Whisper word timestamps (`scripts/asr_words.py`, in `avatar-chatterbox:p0`) → gesture cue sheet anchored on words (`in/poc_cues.json`; in production an LLM tags the script) → `scripts/blender_wii.py` (+ `scripts/gestures.py` library: idle, wave, hand_chest, open_palms, shrug, count, point_slide; ease in/out + wiggle; volume-driven jaw + mouth-shape variation; procedural blinks, head nods from speech energy, breathing; RGBA transparent 480x480 EEVEE 16 samples) via `scripts/blender_wii_run.sh` → `scripts/compose_lecture.py` (PIL slide 1920x1080 from `in/poc_slide.json`, avatar panel bottom-right with "AI avatar" badge, ASS word-timed captions, ffmpeg).
+- **Rig axes (MPFB/Mixamo names, Blender pose Euler):** Arm y- lowers arm, x- raises sideways; with arm lowered ForeArm x- lifts hand forward/up, z- crosses body; Left = mirror (y, z negated). Debug: `scripts/blender_axes.py`, `scripts/blender_gesture_preview.py`.
+- **Speed:** 37 s rendered in 71 s (0.063 s/frame, ~2x faster than real time, single process). 20 h ≈ 38 h single process; LAM/A2E not needed. Voice 20 h ≈ 11 h.
+- **Output:** `out/poc3d/wii_lecture_demo.mp4` (1920x1080, 37 s).
+- **Next:** Julio's stylized character (photo → concept art → 3D → rig, only ~6 mouth shapes needed); LLM gesture tagging; more gestures; parallel renders; batch pipeline per lecture.
