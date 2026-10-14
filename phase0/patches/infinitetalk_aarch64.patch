@@ -1,0 +1,146 @@
+diff --git a/generate_infinitetalk.py b/generate_infinitetalk.py
+index e83daa8..79b16fb 100644
+--- a/generate_infinitetalk.py
++++ b/generate_infinitetalk.py
+@@ -20,7 +20,10 @@ import wan
+ from wan.configs import SIZE_CONFIGS, SUPPORTED_SIZES, WAN_CONFIGS
+ from wan.utils.utils import str2bool, is_video, split_wav_librosa
+ from wan.utils.multitalk_utils import save_video_ffmpeg
+-from kokoro import KPipeline
++try:
++    from kokoro import KPipeline
++except Exception:
++    KPipeline = None
+ from transformers import Wav2Vec2FeatureExtractor
+ from src.audio_analysis.wav2vec2 import Wav2Vec2Model
+ from wan.utils.segvideo import shot_detect
+@@ -275,7 +278,7 @@ def _parse_args():
+     return args
+ 
+ def custom_init(device, wav2vec):    
+-    audio_encoder = Wav2Vec2Model.from_pretrained(wav2vec, local_files_only=True).to(device)
++    audio_encoder = Wav2Vec2Model.from_pretrained(wav2vec, local_files_only=True, attn_implementation="eager").to(device)
+     audio_encoder.feature_extractor._freeze_parameters()
+     wav2vec_feature_extractor = Wav2Vec2FeatureExtractor.from_pretrained(wav2vec, local_files_only=True)
+     return wav2vec_feature_extractor, audio_encoder
+diff --git a/wan/modules/attention.py b/wan/modules/attention.py
+index 9f11ef7..365257b 100644
+--- a/wan/modules/attention.py
++++ b/wan/modules/attention.py
+@@ -3,12 +3,21 @@ import torch
+ import torch.nn as nn
+ from einops import rearrange, repeat
+ from ..utils.multitalk_utils import RotaryPositionalEmbedding1D, normalize_and_scale, split_token_counts_and_frame_ids
+-from xfuser.core.distributed import (
+-    get_sequence_parallel_rank,
+-    get_sequence_parallel_world_size,
+-    get_sp_group,
+-)
+-import xformers.ops
++try:
++    from xfuser.core.distributed import (
++        get_sequence_parallel_rank,
++        get_sequence_parallel_world_size,
++        get_sp_group,
++    )
++except Exception:  # aarch64 single-GPU: no xfuser, sequence parallel unused
++    def get_sequence_parallel_rank(): return 0
++    def get_sequence_parallel_world_size(): return 1
++    def get_sp_group(): return None
++def _mea(q, k, v, attn_bias=None, op=None):
++    # SDPA replacement for xformers.ops.memory_efficient_attention; inputs/outputs are [B, M, H, K]
++    assert attn_bias is None, "block-diagonal bias only used with sequence parallel"
++    o = torch.nn.functional.scaled_dot_product_attention(q.transpose(1, 2), k.transpose(1, 2), v.transpose(1, 2))
++    return o.transpose(1, 2)
+ 
+ try:
+     import flash_attn_interface
+@@ -260,10 +269,10 @@ class SingleStreamAttention(nn.Module):
+             sp_rank = get_sequence_parallel_rank()
+             visual_seqlen, _ = split_token_counts_and_frame_ids(N_t, N_h * N_w, sp_size, sp_rank)
+             assert kv_seq is not None, f"kv_seq should not be None."
+-            attn_bias = xformers.ops.fmha.attn_bias.BlockDiagonalMask.from_seqlens(visual_seqlen, kv_seq)
++            raise NotImplementedError('sequence parallel needs xformers')
+         else:
+             attn_bias = None
+-        x = xformers.ops.memory_efficient_attention(q, encoder_k, encoder_v, attn_bias=attn_bias, op=None,)
++        x = _mea(q, encoder_k, encoder_v, attn_bias=attn_bias, op=None,)
+         x = rearrange(x, "B M H K -> B H M K") 
+ 
+         # linear transform
+@@ -377,7 +386,7 @@ class SingleStreamMutiAttention(SingleStreamAttention):
+         q = rearrange(q, "B H M K -> B M H K")
+         encoder_k = rearrange(encoder_k, "B H M K -> B M H K")
+         encoder_v = rearrange(encoder_v, "B H M K -> B M H K")
+-        x = xformers.ops.memory_efficient_attention(q, encoder_k, encoder_v, attn_bias=None, op=None,)
++        x = _mea(q, encoder_k, encoder_v, attn_bias=None, op=None,)
+         x = rearrange(x, "B M H K -> B H M K")
+ 
+         # linear transform
+diff --git a/wan/multitalk.py b/wan/multitalk.py
+index be7819e..1bed88e 100644
+--- a/wan/multitalk.py
++++ b/wan/multitalk.py
+@@ -1,6 +1,5 @@
+ # Copyright 2024-2025 The Alibaba Wan Team Authors. All rights reserved.
+ import gc
+-from inspect import ArgSpec
+ import logging
+ import json
+ import math
+@@ -35,8 +34,11 @@ from wan.utils.utils import convert_video_to_h264, extract_specific_frames, get_
+ from wan.wan_lora import WanLoraWrapper
+ 
+ from safetensors.torch import load_file
+-from optimum.quanto import quantize, freeze, qint8,requantize
+-import optimum.quanto.nn.qlinear as qlinear
++try:
++    from optimum.quanto import quantize, freeze, qint8,requantize
++    import optimum.quanto.nn.qlinear as qlinear
++except Exception:
++    qlinear = None
+ 
+ def torch_gc():
+     torch.cuda.empty_cache()
+diff --git a/wan/utils/multitalk_utils.py b/wan/utils/multitalk_utils.py
+index d33be09..37e9cc0 100644
+--- a/wan/utils/multitalk_utils.py
++++ b/wan/utils/multitalk_utils.py
+@@ -4,11 +4,16 @@ from einops import rearrange
+ import torch
+ import torch.nn as nn
+ 
+-from xfuser.core.distributed import (
+-    get_sequence_parallel_rank,
+-    get_sequence_parallel_world_size,
+-    get_sp_group,
+-)
++try:
++    from xfuser.core.distributed import (
++        get_sequence_parallel_rank,
++        get_sequence_parallel_world_size,
++        get_sp_group,
++    )
++except Exception:  # aarch64 single-GPU: no xfuser, sequence parallel unused
++    def get_sequence_parallel_rank(): return 0
++    def get_sequence_parallel_world_size(): return 1
++    def get_sp_group(): return None
+ from einops import rearrange, repeat
+ from functools import lru_cache
+ import imageio
+diff --git a/wan/utils/utils.py b/wan/utils/utils.py
+index b571cbd..b93eb2d 100644
+--- a/wan/utils/utils.py
++++ b/wan/utils/utils.py
+@@ -12,7 +12,10 @@ from PIL import Image
+ import librosa
+ import soundfile as sf
+ import subprocess
+-from decord import VideoReader, cpu
++try:
++    from decord import VideoReader, cpu
++except Exception:
++    VideoReader = cpu = None
+ import gc
+ 
+ __all__ = ['cache_video', 'cache_image', 'str2bool']

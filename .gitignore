@@ -24,3 +24,5 @@ __pycache__/
 
 # upstream MuseTalk clone (pinned in HANDOVER.md §16, patch in phase0/patches)
 phase0/musetalk/
+phase0/progress/
+phase0/infinitetalk/

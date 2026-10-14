@@ -1,6 +1,7 @@
 from huggingface_hub import HfApi
 a = HfApi()
-for r in ["BadToBest/EchoMimicV3", "alibaba-pai/Wan2.1-Fun-V1.1-1.3B-InP", "TencentGameMate/chinese-wav2vec2-base"]:
+import sys
+for r in sys.argv[1:]:
     try:
         info = a.model_info(r, files_metadata=True)
         print(r, "license:", info.card_data.get("license") if info.card_data else None)

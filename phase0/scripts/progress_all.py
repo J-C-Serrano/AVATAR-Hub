@@ -1,37 +1,45 @@
 #!/usr/bin/env python3
-"""Live progress for everything: 4 head-motion variants (mv_v0..v3) then the 384 demo (demo384, 11 segments).
-Run:  ./phase0/scripts/progress_all.py"""
-import glob, os, re, time, sys
-OUT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "out")
-STAGES = [("variants", [f"mv_v{i}" for i in range(4)]), ("demo384", [f"demo384/seg_{k}" for k in range(11)])]
-TOTAL = sum(len(u) for _, u in STAGES)
-def step_of(logpath):
-    try: t = open(logpath, errors="ignore").read().replace("\r", "\n")
-    except OSError: return 0
-    m = re.findall(r"(\d+)/8 \[", t); return int(m[-1]) if m else 0
-def unit_files(u):
-    return glob.glob(os.path.join(OUT, u, "*_output.mp4"))
-def logfor(u):
-    if u.startswith("mv_"): return os.path.join(OUT, u + ".log")
-    seg = u.split("/")[-1].split("_")[1]; return os.path.join(OUT, "demo384", f"log_{seg}.txt")
-t0 = time.time()
+"""ONE live progress view for everything (same command every session):
+    ./phase0/scripts/progress_all.py          (from the 'AVATAR Hub' directory)
+Tasks come from phase0/progress/*.json, managed with scripts/pg.py. Kinds:
+  dir     {"name","kind":"dir","path":<rel to phase0>,"total_gb":N}          bar = folder size
+  log     {"name","kind":"log","path":<rel>,"regex":"(\\d+)/(\\d+)"}          bar = last regex match in a log
+  count   {"name","kind":"count","glob":<rel glob>,"total":N}                bar = files matching glob
+  manual  {"name","kind":"manual","done":x,"total":y}                        bar = values set via pg.py
+Finished tasks stay listed until removed (pg.py rm <name>)."""
+import glob, json, os, re, subprocess, sys, time
+P0 = os.path.abspath(os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
+PD = os.path.join(P0, "progress")
+def dsize(p):
+    try: return int(subprocess.run(["du", "-sb", p], capture_output=True, text=True).stdout.split()[0])
+    except Exception: return 0
+def frac(t):
+    k = t.get("kind")
+    try:
+        if k == "dir": return min(1, dsize(os.path.join(P0, t["path"])) / (t["total_gb"] * 1e9)), ""
+        if k == "count": return min(1, len(glob.glob(os.path.join(P0, t["glob"]))) / t["total"]), ""
+        if k == "manual": return min(1, t["done"] / max(t["total"], 1)), t.get("note", "")
+        if k == "log":
+            s = open(os.path.join(P0, t["path"]), errors="ignore").read().replace("\r", "\n")
+            m = re.findall(t.get("regex", r"(\d+)/(\d+)"), s)
+            return (min(1, int(m[-1][0]) / int(m[-1][1])) if m else 0), ""
+    except Exception: pass
+    return 0, ""
+def bar(f, w=34): n = int(f * w); return "█" * n + "░" * (w - n)
+def hms(s): s = int(s); return f"{s//3600}:{s%3600//60:02d}:{s%60:02d}" if s >= 3600 else f"{s//60}:{s%60:02d}"
+hist = {}
 while True:
-    units = [u for _, us in STAGES for u in us]
-    done = [u for u in units if unit_files(u)]
-    cur = next((u for u in units if u not in done), None)
-    frac_cur = 0
-    if cur and os.path.exists(logfor(cur)):
-        frac_cur = 0.45 + 0.55 * step_of(logfor(cur)) / 8   # ~45% of a unit is model load
-        if time.time() - os.path.getmtime(logfor(cur)) > 600: frac_cur = 0
-    n = len(done) + (frac_cur if cur else 0)
-    mt = sorted(os.path.getmtime(unit_files(u)[0]) for u in done)
-    per = (mt[-1] - mt[0]) / (len(mt) - 1) if len(mt) >= 2 else None
-    eta = f"{int(per*(TOTAL-n))//60}m{int(per*(TOTAL-n))%60:02d}s" if per else "--"
-    stage = next((nm for nm, us in STAGES if cur in us), "finished")
-    final = os.path.exists(os.path.join(OUT, "demo384_final.mp4"))
-    f = 1.0 if final else min(n / TOTAL, 0.999)
-    bar = int(40 * f)
-    label = "ALL DONE" if final else f"{stage}: {cur.split('/')[-1] if cur else '-'}"
-    print(f"\r\033[K[{'█'*bar}{'░'*(40-bar)}] {f*100:3.0f}%  {len(done)}/{TOTAL} units  {label}  ETA {eta if not final else '0'}", end="", flush=True)
-    if final: print("\nout/demo384_final.mp4"); break
-    time.sleep(2)
+    tasks = [json.load(open(f)) for f in sorted(glob.glob(os.path.join(PD, "*.json")))]
+    lines = [f"AVATAR Hub progress — {time.strftime('%H:%M:%S')}   (Ctrl-C to quit)", ""]
+    for t in tasks:
+        f, note = frac(t); now = time.time(); n = t["name"]
+        hist.setdefault(n, []).append((now, f)); hist[n] = [h for h in hist[n] if now - h[0] < 300]
+        h = hist[n]; eta = "done" if f >= 1 else "…"
+        if f < 1 and len(h) > 2 and h[-1][1] > h[0][1]:
+            eta = "ETA " + hms((1 - f) * (h[-1][0] - h[0][0]) / (h[-1][1] - h[0][1]))
+        lines.append(f" {n[:28]:<28} {bar(f)} {f*100:5.1f}%  {eta} {note}")
+    ps = subprocess.run(["docker", "ps", "--format", "{{.Image}}  {{.Status}}"], capture_output=True, text=True).stdout.strip()
+    lines += ["", " containers running:", *(["   " + l for l in ps.splitlines()] or ["   (none)"])]
+    sys.stdout.write("\033[2J\033[H" + "\n".join(lines) + "\n"); sys.stdout.flush()
+    if "--once" in sys.argv: break
+    time.sleep(3)
