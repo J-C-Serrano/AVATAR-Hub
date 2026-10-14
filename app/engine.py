@@ -16,10 +16,29 @@ PACE = {"Slower": 0.9, "Normal": 1.0, "Faster": 1.1}
 FORMATS = {"WAV": "wav", "MP3": "mp3", "M4A": "m4a", "OGG": "ogg", "FLAC": "flac"}
 
 
+class _StepTqdm:
+    """Replaces tqdm inside chatterbox T3 so we can see every generated speech token (live progress)."""
+    cb = None
+
+    def __init__(self, it, *a, **k): self.it = it
+
+    def __iter__(self):
+        for n, x in enumerate(self.it):
+            if _StepTqdm.cb: _StepTqdm.cb(n + 1)
+            yield x
+
+
+def _patch_tqdm():
+    import chatterbox.models.t3.t3 as t3mod
+    t3mod.tqdm = _StepTqdm
+
+
 class Engine:
     def __init__(self, device="cuda", with_asr=True):
         from chatterbox.mtl_tts import ChatterboxMultilingualTTS
         self.tts = ChatterboxMultilingualTTS.from_pretrained(device=device)
+        _patch_tqdm()
+        self.tok_per_char = 1.7     # learned online: speech tokens (25/s) per text character
         self.sr = self.tts.sr
         self.base = {k: v.detach().clone() for k, v in self.tts.t3.tfmr.state_dict().items()}
         self.deltas, self.active = {}, (None, 0.0)
@@ -74,7 +93,7 @@ class Engine:
     def _qc(self, w, text, lang):
         if self.asr is None: return 0.0, ""
         w16 = librosa.resample(w, orig_sr=self.sr, target_sr=16000)
-        r = self.asr(w16, return_timestamps="word", generate_kwargs={"language": lang, "task": "transcribe"})
+        r = self.asr(w16, return_timestamps=True, generate_kwargs={"language": lang, "task": "transcribe"})
         rms = librosa.feature.rms(y=w16, frame_length=640, hop_length=320)[0]; ref = np.percentile(rms, 95) + 1e-9
         t = np.arange(len(rms)) * 0.02; inw = (t < 0.12) | (t > t[-1] - 0.12)
         for c in r["chunks"]:
@@ -91,22 +110,39 @@ class Engine:
                speed=1.0, takes=3, seed=0, progress=None):
         self.use(lora_dir, lora_scale); self.set_ref(ref, exaggeration)
         sents = [s.strip() for s in re.split(r"(?<=[.!?])\s+|\n+", text.strip()) if s.strip()]
-        parts, report = [], []
+        W = [len(x) + 8 for x in sents]; total = float(sum(W)); done = 0.0; shown = [0.0]
+        def report(phase_frac, si, msg):
+            f = min(0.999, (done + W[si] * phase_frac) / total)
+            if f > shown[0]: shown[0] = f
+            if progress: progress(shown[0], msg)
+        parts, report_rows = [], []
         for si, s in enumerate(sents):
-            best = None
+            best = None; exp_tok = max(20, self.tok_per_char * len(s)); last_n = [0]
             for k in range(takes):
                 torch.manual_seed(seed + 101 * si + k)
                 self._clear_hooks()
-                w = self.tts.generate(s, language_id=lang, exaggeration=exaggeration, cfg_weight=cfg_weight, temperature=temperature).squeeze().cpu().numpy()
+                tag = f"Sentence {si + 1}/{len(sents)}" + (f" · retry {k + 1}" if k else "")
+                def on_step(n, tag=tag):
+                    last_n[0] = n
+                    if n % 4 == 0: report(0.82 * min(0.97, n / exp_tok), si, f"{tag}: speaking")
+                _StepTqdm.cb = on_step
+                try:
+                    w = self.tts.generate(s, language_id=lang, exaggeration=exaggeration, cfg_weight=cfg_weight, temperature=temperature).squeeze().cpu().numpy()
+                finally:
+                    _StepTqdm.cb = None
+                if last_n[0] > 5: self.tok_per_char = 0.7 * self.tok_per_char + 0.3 * (last_n[0] / max(1, len(s)))
+                report(0.88, si, f"{tag}: checking pronunciation")
                 sc, heard = self._qc(w, s, lang)
                 if best is None or sc < best[0]: best = (sc, w, heard)
                 if sc == 0: break
             parts += [best[1], np.zeros(int(0.32 * self.sr), dtype=np.float32)]
-            report.append({"sentence": s, "score": round(best[0], 3), "heard": best[2]})
-            if progress: progress((si + 1) / len(sents), s)
+            report_rows.append({"sentence": s, "score": round(best[0], 3), "heard": best[2]})
+            done += W[si]; report(0.0, min(si + 1, len(sents) - 1) if si + 1 < len(sents) else si, f"Sentence {si + 1}/{len(sents)} done")
+        report = report_rows
         a = np.concatenate(parts) if parts else np.zeros(1, dtype=np.float32)
         a = a / (np.abs(a).max() + 1e-9) * 0.89
         if abs(speed - 1.0) > 1e-3: a = time_stretch(a, self.sr, speed)
+        if progress: progress(1.0, "Done")
         return a, report
 
 

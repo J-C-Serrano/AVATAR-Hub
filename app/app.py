@@ -48,6 +48,31 @@ def get_engine():
     return Engine()
 
 
+def run_with_progress(fn, label="Generating"):
+    """Run fn(progress_cb) in a thread; animate a real progress bar with stage text and time left. Returns fn's result."""
+    import threading
+    st_ = {"f": 0.0, "msg": "Starting…", "res": None, "err": None}
+    def cb(f, msg): st_["f"], st_["msg"] = f, msg
+    def work():
+        try: st_["res"] = fn(cb)
+        except Exception as e: st_["err"] = e
+    th = threading.Thread(target=work, daemon=True); t0 = time.time(); th.start()
+    bar = st.progress(0.0, text=f"{label}…"); eta_s = None
+    while th.is_alive():
+        el = time.time() - t0; f = st_["f"]
+        if f > 0.04:
+            est = el * (1 - f) / f; eta_s = est if eta_s is None else 0.8 * eta_s + 0.2 * est
+            left = f" · about {max(1, round(eta_s))} s left"
+        else:
+            left = " · estimating time…"
+        bar.progress(min(f, 0.999), text=f"{f * 100:.0f}% · {st_['msg']}{left}")
+        time.sleep(0.25)
+    th.join()
+    if st_["err"]: bar.progress(st_["f"], text=f"Stopped: {st_['err']}"); raise st_["err"]
+    bar.progress(1.0, text=f"100% · Done in {time.time() - t0:.0f} s")
+    return st_["res"]
+
+
 def badge(status):
     label = {"ready": "Ready", "review": "Needs review", "building": "Building…", "recording": "Recording"}.get(status, status)
     return f'<span class="badge b-{status}">{label}</span>'
@@ -130,18 +155,18 @@ def speak_panel(v):
     if not fmts: fmts = ["WAV"]
     if st.button("🔊 Create speech", type="primary", disabled=not text.strip()):
         eng = get_engine()
-        bar = st.progress(0.0, text="Generating…")
-        V = store.vdir(v["id"])
-        a, rep = eng.speak(text, lang, os.path.join(V, s["ref"]), os.path.join(V, s["lora"]) if s.get("lora") else None,
+        V = store.vdir(v["id"]); seed = int(time.time()) % 10000
+        a, rep = run_with_progress(lambda cb: eng.speak(text, lang, os.path.join(V, s["ref"]), os.path.join(V, s["lora"]) if s.get("lora") else None,
                            s.get("lora_scale", 1.0), s["exaggeration"], s["cfg_weight"], s["temperature"], s.get("speed", 1.0),
-                           takes=3, seed=int(time.time()) % 10000, progress=lambda f, sent: bar.progress(f, text=f"Generating: {sent[:60]}…"))
+                           takes=3, seed=seed, progress=cb), "Creating speech")
         d = store.new_generation_dir(v["id"], text)
         paths = export(a, eng.sr, os.path.join(d, "speech"), fmts)
         meta = {"text": text, "language": lang, "tone": tone, "pace": pace, "settings": s, "formats": fmts,
                 "files": {k: os.path.basename(p) for k, p in paths.items()}, "duration_s": round(len(a) / eng.sr, 1),
                 "created": time.strftime("%Y-%m-%d %H:%M:%S"), "qc": rep}
         json.dump(meta, open(os.path.join(d, "meta.json"), "w"), indent=1, ensure_ascii=False)
-        bar.empty(); st.success(f"Done: {meta['duration_s']} s of speech, saved under {v['name']}.")
+        st.success(f"Done: {meta['duration_s']} s of speech, saved under {v['name']}.")
+        st.audio(paths.get("WAV") or paths.get("_wav"))
     history(v)
 
 
@@ -290,16 +315,17 @@ def review():
     if b1.button("🔁 Try again with this feedback", disabled=not fb.strip()):
         var, notes = feedback.variants(chosen["settings"], fb, n_refs=len(v.get("refs", [])), seed=rnd["round"])
         eng = get_engine(); new = rnd["round"] + 1; nd = os.path.join(V, "candidates", f"r{new}"); os.makedirs(nd, exist_ok=True)
-        bar = st.progress(0.0, text="Rendering new versions…")
-        for i, (tag, s, label) in enumerate(var):
+        def render_all(cb):
+          for i, (tag, s, label) in enumerate(var):
             if "ref_index" in s and v.get("refs"): s["ref"] = v["refs"][s.pop("ref_index") % len(v["refs"])]
             a, rep = eng.speak(v.get("test_text", chosen["text"]), v["languages"][0], os.path.join(V, s["ref"]),
                                os.path.join(V, s["lora"]) if s.get("lora") else None, s.get("lora_scale", 1.0), s["exaggeration"],
-                               s["cfg_weight"], s["temperature"], s.get("speed", 1.0), takes=2, seed=s.pop("seed", 0))
+                               s["cfg_weight"], s["temperature"], s.get("speed", 1.0), takes=2, seed=s.pop("seed", 0),
+                               progress=lambda f, m, i=i, tag=tag: cb((i + f) / 3, f"Version {tag} of A/B/C · {m}"))
             sf.write(os.path.join(nd, f"{tag}.wav"), a, eng.sr)
             json.dump({"tag": tag, "settings": s, "label": f"Based on {pick}: {label}", "text": chosen["text"], "qc": rep},
                       open(os.path.join(nd, f"{tag}.json"), "w"), indent=1, ensure_ascii=False)
-            bar.progress((i + 1) / 3, text=f"Rendered version {tag}")
+        run_with_progress(render_all, "Rendering 3 new versions")
         v["rounds"].append({"round": new, "feedback": fb, "based_on": f"r{rnd['round']}:{pick}", "notes": notes, "dir": f"candidates/r{new}"})
         store.save_profile(v); st.rerun()
     if b2.button(f"✅ Save version {pick} as my voice profile", type="primary"):

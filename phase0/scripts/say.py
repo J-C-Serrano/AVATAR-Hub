@@ -35,7 +35,7 @@ for si, s in enumerate(sents):
         torch.manual_seed(7000 + 10 * si + k)
         w = tts.generate(s, language_id=A.lang, exaggeration=0.5, cfg_weight=0.0, temperature=0.8).squeeze().cpu().numpy()
         w16 = librosa.resample(w, orig_sr=tts.sr, target_sr=16000)
-        r = asr(w16, return_timestamps="word", generate_kwargs={"language": A.lang, "task": "transcribe"})
+        r = asr(w16, return_timestamps=True, generate_kwargs={"language": A.lang, "task": "transcribe"})
         sc = 3 * wer(s, r["text"]) + 2 * stray(w16, r["chunks"])
         if best is None or sc < best[0]: best = (sc, w, r["text"].strip())
         if sc == 0: break
