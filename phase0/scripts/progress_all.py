@@ -5,6 +5,7 @@ Tasks come from phase0/progress/*.json, managed with scripts/pg.py. Kinds:
   dir     {"name","kind":"dir","path":<rel to phase0>,"total_gb":N}          bar = folder size
   log     {"name","kind":"log","path":<rel>,"regex":"(\\d+)/(\\d+)"}          bar = last regex match in a log
   count   {"name","kind":"count","glob":<rel glob>,"total":N}                bar = files matching glob
+  matches {"name","kind":"matches","path":<rel log>,"regex":R,"total":N}      bar = regex matches in a log (e.g. finished items)
   manual  {"name","kind":"manual","done":x,"total":y}                        bar = values set via pg.py
 Finished tasks stay listed until removed (pg.py rm <name>)."""
 import glob, json, os, re, subprocess, sys, time
@@ -18,6 +19,9 @@ def frac(t):
     try:
         if k == "dir": return min(1, dsize(os.path.join(P0, t["path"])) / (t["total_gb"] * 1e9)), ""
         if k == "count": return min(1, len(glob.glob(os.path.join(P0, t["glob"]))) / t["total"]), ""
+        if k == "matches":   # number of regex matches in a log / expected total (e.g. finished sentences)
+            txt = open(os.path.join(P0, t["path"]), errors="ignore").read()
+            n = len(re.findall(t["regex"], txt, re.M)); return min(1, n / t["total"]), f"{n}/{t['total']}"
         if k == "manual": return min(1, t["done"] / max(t["total"], 1)), t.get("note", "")
         if k == "log":
             s = open(os.path.join(P0, t["path"]), errors="ignore").read().replace("\r", "\n")

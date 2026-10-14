@@ -76,7 +76,7 @@ with torch.no_grad():
         for name, args in {"p+": (12, 0, 0, 0), "p-": (-12, 0, 0, 0), "y+": (0, 12, 0, 0), "r+": (0, 0, 10, 0), "blink": (0, 0, 0, 1), "smile": (0, 0, 0, 0, 1.0)}.items():
             cv2.imwrite(os.path.join(A.out, f"dbg_{name}.png"), cv2.cvtColor(render(*args), cv2.COLOR_RGB2BGR))
         sys.exit()
-    M = HM.loop_nodtilt(A.loop, A.fps, A.seed, A.smile_base or 0.35) if (A.loop > 0 and A.style == "nodtilt") else HM.loop(A.loop, A.fps, A.amp, A.seed, (A.blink_min, A.blink_max), A.smiles, A.smile_base) if A.loop > 0 else HM.compute(json.load(open(A.prosody)), A.amp)
+    M = HM.loop_nodtilt(A.loop, A.fps, A.seed, A.smile_base) if (A.loop > 0 and A.style == "nodtilt") else HM.loop(A.loop, A.fps, A.amp, A.seed, (A.blink_min, A.blink_max), A.smiles, A.smile_base) if A.loop > 0 else HM.compute(json.load(open(A.prosody)), A.amp)
     # head_motion pitch: + = nod down. LivePortrait sign mapped by PITCH_SIGN (set after debug check)
     PITCH_SIGN, YAW_SIGN, ROLL_SIGN = float(os.environ.get("PS", 1)), float(os.environ.get("YS", 1)), float(os.environ.get("RS", 1))
     import time; t0 = time.time()
