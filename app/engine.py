@@ -1,7 +1,7 @@
 """Speech engine shared by the app and the background job.
 One Chatterbox multilingual model stays loaded; a voice = reference clip + optional LoRA delta (scaled) + settings.
 LoRA deltas are cached per adapter, so switching voices only adds/subtracts weights (no reload)."""
-import os, re, subprocess, tempfile
+import os, re, subprocess, tempfile, threading
 import numpy as np, soundfile as sf, torch, librosa
 
 TONES = {  # optional tone presets -> parameter nudges (Chatterbox: exaggeration, temperature, cfg_weight)
@@ -28,6 +28,13 @@ class Engine:
             from transformers import pipeline
             self.asr = pipeline("automatic-speech-recognition", model="openai/whisper-large-v3-turbo", device=device, torch_dtype=torch.float16)
         self._ref = None
+        self.lock = threading.RLock()   # one generation at a time (model, hooks and conditionals are shared)
+
+    def _clear_hooks(self):
+        """Chatterbox's AlignmentStreamAnalyzer registers forward hooks on every inference call and never removes them;
+        they pile up and, if generations overlap, mix attention maps from different runs. Clear them before each call."""
+        for m in self.tts.t3.tfmr.modules():
+            if m._forward_hooks: m._forward_hooks.clear()
 
     # ---- voice weights ----
     def _delta(self, lora_dir):
@@ -76,8 +83,12 @@ class Engine:
         return 3 * self._wer(text, r["text"]) + 2 * stray, r["text"].strip()
 
     # ---- synthesis ----
-    def speak(self, text, lang, ref, lora_dir=None, lora_scale=1.0, exaggeration=0.5, cfg_weight=0.0, temperature=0.8,
-              speed=1.0, takes=3, seed=0, progress=None):
+    def speak(self, *args, **kw):
+        with self.lock:
+            return self._speak(*args, **kw)
+
+    def _speak(self, text, lang, ref, lora_dir=None, lora_scale=1.0, exaggeration=0.5, cfg_weight=0.0, temperature=0.8,
+               speed=1.0, takes=3, seed=0, progress=None):
         self.use(lora_dir, lora_scale); self.set_ref(ref, exaggeration)
         sents = [s.strip() for s in re.split(r"(?<=[.!?])\s+|\n+", text.strip()) if s.strip()]
         parts, report = [], []
@@ -85,6 +96,7 @@ class Engine:
             best = None
             for k in range(takes):
                 torch.manual_seed(seed + 101 * si + k)
+                self._clear_hooks()
                 w = self.tts.generate(s, language_id=lang, exaggeration=exaggeration, cfg_weight=cfg_weight, temperature=temperature).squeeze().cpu().numpy()
                 sc, heard = self._qc(w, s, lang)
                 if best is None or sc < best[0]: best = (sc, w, heard)

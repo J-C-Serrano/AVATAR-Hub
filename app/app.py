@@ -13,23 +13,24 @@ SCRIPT_MD = os.path.join(store.HUB, "docs", "voice_recording_script.md")
 
 st.markdown("""
 <style>
-:root { --navy:#0b2a4a; --accent:#f0a028; --ink:#1d2433; --muted:#6b7385; --card:#ffffff; --bg:#f4f6fa; }
+:root { --navy:#123a66; --accent:#f0a028; --ink:#e6ebf3; --muted:#9aa6bb; --card:#162033; --card2:#1c2940; --bg:#0e1420; --line:#26344d; }
 .stApp { background: var(--bg); }
-.hero { background: linear-gradient(120deg, var(--navy) 0%, #164a7a 100%); color: #fff; border-radius: 18px;
-        padding: 28px 34px; margin-bottom: 22px; border-bottom: 6px solid var(--accent); }
+.hero { background: linear-gradient(120deg, #0b2a4a 0%, #164a7a 100%); color: #fff; border-radius: 18px;
+        padding: 28px 34px; margin-bottom: 22px; border-bottom: 6px solid var(--accent); box-shadow: 0 6px 24px rgba(0,0,0,.35); }
 .hero h1 { color:#fff; font-size: 2.2rem; margin: 0 0 6px 0; letter-spacing: -0.5px; }
-.hero p { color:#d7e3f2; margin:0; font-size: 1.05rem; }
-.tile { border-radius: 18px; padding: 26px 24px; background: var(--card); box-shadow: 0 2px 10px rgba(11,42,74,.08);
-        border: 2px solid transparent; min-height: 170px; }
+.hero p { color:#c9d8ea; margin:0; font-size: 1.05rem; }
+.tile { border-radius: 18px; padding: 26px 24px; background: var(--card); border: 1px solid var(--line);
+        box-shadow: 0 4px 18px rgba(0,0,0,.30); min-height: 170px; }
 .tile h3 { margin: 6px 0 6px 0; color: var(--ink); } .tile p { color: var(--muted); margin: 0; }
-.tile.off { opacity: .45; filter: grayscale(1); }
+.tile.off { opacity: .38; filter: grayscale(1); }
 .big { font-size: 2.4rem; }
 .badge { display:inline-block; padding: 2px 10px; border-radius: 999px; font-size: .78rem; font-weight: 600; }
-.b-ready { background:#e2f5e9; color:#17703a; } .b-review { background:#fff3dc; color:#9a6200; }
-.b-building { background:#e3edfb; color:#1d4f91; } .b-recording { background:#eceef3; color:#4a5263; }
-.vcard { background: var(--card); border-radius: 14px; padding: 14px 16px; box-shadow: 0 1px 6px rgba(11,42,74,.07); margin-bottom: 8px; }
+.b-ready { background:#14361f; color:#6fdc95; } .b-review { background:#3d2c0a; color:#f4c060; }
+.b-building { background:#132c4d; color:#7fb2f0; } .b-recording { background:#262d3a; color:#b8c0cf; }
+.vcard { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 14px 16px; margin-bottom: 8px; color: var(--ink); }
 .note { color: var(--muted); font-size: .9rem; }
-div[data-testid="stButton"] > button[kind="primary"] { background: var(--navy); border-color: var(--navy); }
+div[data-testid="stButton"] > button[kind="primary"] { background: var(--accent); border-color: var(--accent); color: #111; font-weight: 600; }
+div[data-testid="stButton"] > button[kind="primary"]:hover { background: #ffb845; border-color: #ffb845; color: #111; }
 </style>""", unsafe_allow_html=True)
 
 ss = st.session_state
