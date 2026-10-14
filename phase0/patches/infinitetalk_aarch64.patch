@@ -129,7 +129,7 @@ index d33be09..37e9cc0 100644
  from functools import lru_cache
  import imageio
 diff --git a/wan/utils/utils.py b/wan/utils/utils.py
-index b571cbd..b93eb2d 100644
+index b571cbd..985d580 100644
 --- a/wan/utils/utils.py
 +++ b/wan/utils/utils.py
 @@ -12,7 +12,10 @@ from PIL import Image
@@ -144,3 +144,25 @@ index b571cbd..b93eb2d 100644
  import gc
  
  __all__ = ['cache_video', 'cache_image', 'str2bool']
+@@ -139,13 +142,14 @@ def is_video(path):
+ 
+ def extract_specific_frames(video_path, frame_id):
+     if is_video(video_path):
+-        vr = VideoReader(video_path, ctx=cpu(0))
+-        if frame_id < vr._num_frame:
+-            frame = vr[frame_id].asnumpy()  # RGB
+-        else:
+-            frame = vr[-1].asnumpy()
+-        del vr
+-        gc.collect()
++        import cv2  # decord-free (aarch64): read frame with OpenCV
++        cap = cv2.VideoCapture(video_path)
++        n = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
++        cap.set(cv2.CAP_PROP_POS_FRAMES, min(frame_id, n - 1))
++        ok, frame = cap.read()
++        cap.release()
++        assert ok, f"cannot read frame {frame_id} of {video_path}"
++        frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+         frame = Image.fromarray(frame)
+     else:
+         frame = Image.open(video_path).convert("RGB")
