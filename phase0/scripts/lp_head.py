@@ -20,6 +20,8 @@ ap.add_argument("--img"); ap.add_argument("--prosody"); ap.add_argument("--out")
 ap.add_argument("--amp", type=float, default=1.0); ap.add_argument("--debug", action="store_true")
 ap.add_argument("--loop", type=float, default=0, help="seconds: render a seamless idle loop instead of prosody-driven motion")
 ap.add_argument("--fps", type=int, default=30); ap.add_argument("--seed", type=int, default=5)
+ap.add_argument("--blink_min", type=float, default=2.8); ap.add_argument("--blink_max", type=float, default=5.0)
+ap.add_argument("--smiles", type=int, default=0, help="number of smiles per loop"); ap.add_argument("--smile_base", type=float, default=0.0)
 ap.add_argument("--scale", type=float, default=2.6); ap.add_argument("--eye_open", type=float, default=0.0)
 A = ap.parse_args()
 W = "/w/liveportrait"
@@ -49,10 +51,17 @@ with torch.no_grad():
     eye0 = float(calc_eye_close_ratio(lmk203[None]).mean())
     print(f"source pose pitch={float(x_s_info['pitch']):.1f} yaw={float(x_s_info['yaw']):.1f} roll={float(x_s_info['roll']):.1f} eye_ratio={eye0:.3f}")
 
-    def render(dp, dy, dr, blink):
+    def smile_delta(exp, smile):  # LivePortrait expression edit (same keypoint offsets as its gradio "smile" slider)
+        d = exp.clone()
+        for (k, ax, w) in ((20, 1, -0.01), (14, 1, -0.02), (17, 1, 0.0065), (17, 2, 0.003), (13, 1, -0.00275), (16, 1, -0.00275), (3, 1, -0.0035), (7, 1, -0.0035)):
+            d[0, k, ax] += smile * w
+        return d
+
+    def render(dp, dy, dr, blink, smile=0.0):
         R_d = get_rotation_matrix(x_s_info["pitch"] + dp, x_s_info["yaw"] + dy, x_s_info["roll"] + dr)
         R_new = (R_d @ R_s.permute(0, 2, 1)) @ R_s
-        x_d = x_s_info["scale"] * (x_s_info["kp"] @ R_new + x_s_info["exp"]) + x_s_info["t"]
+        exp = smile_delta(x_s_info["exp"], smile) if smile else x_s_info["exp"]
+        x_d = x_s_info["scale"] * (x_s_info["kp"] @ R_new + exp) + x_s_info["t"]
         if blink > 0.02:
             target = eye0 * (1 - blink) + 0.0 * blink
             ratio = lpw.calc_combined_eye_ratio([[target]], lmk203)
@@ -63,15 +72,15 @@ with torch.no_grad():
 
     os.makedirs(os.path.join(A.out, "frames"), exist_ok=True)
     if A.debug:
-        for name, args in {"p+": (12, 0, 0, 0), "p-": (-12, 0, 0, 0), "y+": (0, 12, 0, 0), "r+": (0, 0, 10, 0), "blink": (0, 0, 0, 1)}.items():
+        for name, args in {"p+": (12, 0, 0, 0), "p-": (-12, 0, 0, 0), "y+": (0, 12, 0, 0), "r+": (0, 0, 10, 0), "blink": (0, 0, 0, 1), "smile": (0, 0, 0, 0, 1.0)}.items():
             cv2.imwrite(os.path.join(A.out, f"dbg_{name}.png"), cv2.cvtColor(render(*args), cv2.COLOR_RGB2BGR))
         sys.exit()
-    M = HM.loop(A.loop, A.fps, A.amp, A.seed) if A.loop > 0 else HM.compute(json.load(open(A.prosody)), A.amp)
+    M = HM.loop(A.loop, A.fps, A.amp, A.seed, (A.blink_min, A.blink_max), A.smiles, A.smile_base) if A.loop > 0 else HM.compute(json.load(open(A.prosody)), A.amp)
     # head_motion pitch: + = nod down. LivePortrait sign mapped by PITCH_SIGN (set after debug check)
     PITCH_SIGN, YAW_SIGN, ROLL_SIGN = float(os.environ.get("PS", 1)), float(os.environ.get("YS", 1)), float(os.environ.get("RS", 1))
     import time; t0 = time.time()
     for f in range(M["n"]):
-        fr = render(PITCH_SIGN * M["pitch"][f], YAW_SIGN * M["yaw"][f], ROLL_SIGN * M["roll"][f], float(M["blink"][f]))
+        fr = render(PITCH_SIGN * M["pitch"][f], YAW_SIGN * M["yaw"][f], ROLL_SIGN * M["roll"][f], float(M["blink"][f]), float(M.get("smile", [0] * M["n"])[f]))
         cv2.imwrite(os.path.join(A.out, "frames", f"f_{f + 1:04d}.png"), cv2.cvtColor(fr, cv2.COLOR_RGB2BGR))
         if f % 100 == 0: print(f"{f}/{M['n']} [", flush=True)
     print(f"RENDER_DONE frames={M['n']} sec={time.time() - t0:.1f} per_frame={(time.time() - t0) / M['n']:.3f}")

@@ -55,7 +55,7 @@ def compute(P, amp=1.0, seed=11):
             "beats": int((beat > 0).sum()), "fps": FPS, "n": N}
 
 
-def loop(seconds, fps=30, amp=1.0, seed=5):
+def loop(seconds, fps=30, amp=1.0, seed=5, blink_every=(2.8, 5.0), smiles=0, smile_base=0.0):
     """Seamless idle/talking loop: every component is a sum of sines with a whole number of cycles over the loop,
     so frame N == frame 0. Blinks avoid the seam. Same output keys/signs as compute()."""
     rng = np.random.default_rng(seed)
@@ -71,7 +71,16 @@ def loop(seconds, fps=30, amp=1.0, seed=5):
     blink = np.zeros(N); f = int(rng.uniform(0.8, 1.6) * fps)
     while f < N - int(0.6 * fps):                                 # keep the seam clear of blinks
         for d_, v in enumerate((0.6, 1.0, 1.0, 0.5)): blink[f + d_] = v
-        f += int(rng.uniform(2.8, 5.0) * fps)
+        f += int(rng.uniform(*blink_every) * fps)
+    # smiles: raised-cosine bumps (~2.5 s) spread over the loop, zero at the seam
+    smile = np.full(N, float(smile_base))
+    if smiles:
+        slots = np.linspace(0, N, smiles + 1)
+        for k in range(smiles):
+            dur = int(rng.uniform(2.0, 3.2) * fps); lo, hi = int(slots[k] + 0.4 * fps), int(slots[k + 1] - dur - 0.4 * fps)
+            s0 = int(rng.uniform(lo, max(lo + 1, hi))); peak = rng.uniform(0.7, 1.0)
+            for j in range(dur):
+                if s0 + j < N: smile[s0 + j] += peak * 0.5 * (1 - np.cos(2 * np.pi * j / dur))
     z = np.zeros(N)
-    return {"pitch": amp * pitch, "yaw": amp * yaw, "roll": amp * roll, "blink": blink, "melody": z, "lean": z,
+    return {"pitch": amp * pitch, "yaw": amp * yaw, "roll": amp * roll, "blink": blink, "smile": smile, "melody": z, "lean": z,
             "starts": [0], "beats": 0, "fps": fps, "n": N}
