@@ -30,7 +30,10 @@ E = E / (np.percentile(E, 95) + 1e-6); E = np.convolve(np.clip(E, 0, 1.5), np.on
 bpy.ops.wm.read_factory_settings(use_empty=True)
 bpy.ops.import_scene.gltf(filepath=GLB)
 sc = bpy.context.scene; sc.render.fps = int(fps)
-sc.render.engine = "BLENDER_EEVEE"; sc.eevee.taa_render_samples = SAMPLES
+ENGINE = arg("--engine", "BLENDER_EEVEE")
+sc.render.engine = ENGINE; sc.eevee.taa_render_samples = SAMPLES
+if ENGINE == "BLENDER_WORKBENCH":
+    sc.display.shading.light = "STUDIO"; sc.display.shading.color_type = "TEXTURE"; sc.display.render_aa = "8"
 sc.render.resolution_x = sc.render.resolution_y = RES
 vt = [v.identifier for v in sc.view_settings.bl_rna.properties["view_transform"].enum_items]
 sc.view_settings.view_transform = "AgX" if "AgX" in vt else ("Filmic" if "Filmic" in vt else "Standard")
