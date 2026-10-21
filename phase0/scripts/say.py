@@ -14,7 +14,7 @@ tts = ChatterboxMultilingualTTS.from_pretrained(device="cuda")
 if A.lora: tts.t3.tfmr = PeftModel.from_pretrained(tts.t3.tfmr, A.lora).merge_and_unload()
 asr = pipeline("automatic-speech-recognition", model="openai/whisper-large-v3-turbo", device="cuda", torch_dtype=torch.float16)
 tts.prepare_conditionals(A.ref, exaggeration=0.5)
-norm = lambda s: re.sub(r"[^a-zäöå0-9 ]", "", s.lower()).split()
+norm = lambda s: re.sub(r"[^a-zäöå0-9 ]", "", re.sub(r"\bay eye\b|\ba\.i\.", "ai", s.lower())).split()   # "ay eye" = spelling that makes the voice say A-I
 def wer(r, h):
     r, h = norm(r), norm(h); d = np.arange(len(h) + 1)
     for i in range(1, len(r) + 1):

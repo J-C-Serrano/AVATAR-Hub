@@ -1,8 +1,10 @@
 """HTML slides for the Zoom-alternative demo (1920x1080): demo_slides.py <outdir>
 writes intro.html, outro.html and body_<k>.html (one per reveal state of the support slide).
-The avatar box on intro/outro is left empty; compose_demo.sh overlays the video at AV_X, AV_Y, AV_S."""
+The avatar box on intro/outro is left empty; demo_compose.py overlays the video at AV_X, AV_Y, AV_S.
+Voice-over slides keep a corner spot (CX, CY, CS) for the small nodding avatar circle, with a green "AI avatar" light."""
 import os, sys
 AV_X, AV_Y, AV_S = 150, 210, 660
+CX, CY, CS = 1622, 40, 148
 CSS = """
 *{box-sizing:border-box;margin:0;padding:0}
 body{width:1920px;height:1080px;overflow:hidden;background:#0e1420;color:#e8edf5;font-family:'Ubuntu Sans','Ubuntu',sans-serif}
@@ -23,6 +25,15 @@ h2{font-size:30px;font-weight:700;margin-bottom:22px}
 .card span{font-size:26px;line-height:1.32;color:#cfd7e4}
 .on{border-color:#f0a028;box-shadow:0 0 0 6px #f0a02822}
 .hid{opacity:0}
+.ring{position:absolute;border-radius:50%;border:4px solid #3ddc84;background:#182235}
+.ai{position:absolute;display:flex;align-items:center;gap:8px;font-size:18px;font-weight:700;color:#3ddc84;letter-spacing:.04em}
+.ai i{width:10px;height:10px;border-radius:50%;background:#3ddc84;box-shadow:0 0 8px #3ddc84}
+.step{position:absolute;top:262px;height:400px;background:#182235;border-radius:24px;padding:36px 36px;border:3px solid transparent}
+.step .no{font-size:24px;font-weight:700;color:#0e1420;background:#f0a028;border-radius:999px;padding:6px 16px;display:inline-block}
+.step b{display:block;font-size:42px;margin:26px 0 16px}
+.step span{display:block;font-size:28px;line-height:1.35;color:#cfd7e4}
+.chip{display:inline-flex;align-items:center;gap:10px;margin-top:26px;padding:10px 18px;border-radius:999px;border:2px dashed #3ddc84;color:#3ddc84;font-size:24px}
+.seg{position:absolute;top:720px;height:56px;border-radius:12px;display:flex;align-items:center;justify-content:center;font-size:24px;font-weight:700}
 .banner{position:absolute;left:150px;right:150px;top:938px;height:84px;border-radius:18px;background:#f0a028;color:#0e1420;font-size:36px;font-weight:700;display:flex;align-items:center;justify-content:center}
 """
 page = lambda body: f"<!doctype html><html><head><meta charset=utf-8><style>{CSS}</style></head><body><div class=bar></div>{body}</body></html>"
@@ -52,6 +63,8 @@ CARDS = [("Time", "Fix a sentence by editing text. Updates take minutes."),
          ("Quality", "Clean, steady sound. Short, focused parts."),
          ("Reach", "Script becomes subtitles and searchable notes."),
          ("Control", "Runs on our own hardware in Finland.")]
+corner = (f"<div class=ring style='left:{CX - 4}px;top:{CY - 4}px;width:{CS + 8}px;height:{CS + 8}px'></div>"
+          f"<div class=ai style='left:{CX + 22}px;top:{CY + CS + 12}px'><i></i>AI avatar</div>")
 # reveal states: 0 zoom panel, 1 tool panel, 2..5 cards, 6 banner
 def body(st):
     vis = lambda i: "" if st >= i else " hid"
@@ -66,11 +79,31 @@ def body(st):
 <div class='panel{vis(1)}' style="left:1000px;top:248px;width:770px;height:392px;border:3px solid {'#f0a028' if st == 1 else 'transparent'}">
  <h2 style="color:#f0a028">With this tool</h2>{lis(FLOW, "n", lambda i: i + 1)}</div>
 {cards}
-<div class='banner{vis(6)}'>It replaces the recording session, not the teaching.</div>""")
+<div class='banner{vis(6)}'>It replaces the recording session, not the teaching.</div>{corner}""")
+
+# how a lecture is built; states: 0 title + timeline, 1 avatar steps, 2 voice-over step, 3 optional face, 4 banner
+def process(st):
+    vis = lambda i: "" if st >= i else " hid"
+    on = lambda i: " on" if st == i else ""
+    return page(f"""
+<div style="position:absolute;left:150px;top:64px"><div class=k>How a lecture is built</div>
+ <h1 style="font-size:62px;margin-top:14px">Avatar, voice-over, avatar</h1></div>
+<div class='step{on(1)}{vis(1)}' style="left:150px;width:420px"><div class=no>Start</div><b>Avatar opens</b>
+ <span>On camera, in your voice: welcome and what the lecture covers.</span></div>
+<div class='step{on(2)}{on(3)}{vis(2)}' style="left:610px;width:700px"><div class=no>Main part</div><b>Slides + voice-over</b>
+ <span>Your trained voice reads the script while the slides run.</span>
+ <div class='chip{vis(3)}'><i style="width:10px;height:10px;border-radius:50%;background:#3ddc84"></i>Optional: small nodding avatar face</div></div>
+<div class='step{on(1)}{vis(1)}' style="left:1350px;width:420px"><div class=no>End</div><b>Avatar closes</b>
+ <span>On camera again: thanks and a short summary.</span></div>
+<div class='seg{vis(1)}' style="left:150px;width:420px;background:#f0a028;color:#0e1420">avatar</div>
+<div class='seg{vis(2)}' style="left:610px;width:700px;background:#2a3a57;color:#e8edf5">voice-over</div>
+<div class='seg{vis(1)}' style="left:1350px;width:420px;background:#f0a028;color:#0e1420">avatar</div>
+<div class='banner{vis(4)}' style="top:880px">This demo follows exactly the same structure.</div>{corner}""")
 
 if __name__ == "__main__":
     d = sys.argv[1]; os.makedirs(d, exist_ok=True)
     open(os.path.join(d, "intro.html"), "w").write(INTRO)
     open(os.path.join(d, "outro.html"), "w").write(OUTRO)
     for st in range(7): open(os.path.join(d, f"body_{st}.html"), "w").write(body(st))
+    for st in range(5): open(os.path.join(d, f"process_{st}.html"), "w").write(process(st))
     print("wrote", d)
