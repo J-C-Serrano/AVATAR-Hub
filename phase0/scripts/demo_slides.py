@@ -32,6 +32,7 @@ h2{font-size:30px;font-weight:700;margin-bottom:22px}
 .step .no{font-size:24px;font-weight:700;color:#0e1420;background:#f0a028;border-radius:999px;padding:6px 16px;display:inline-block}
 .step b{display:block;font-size:42px;margin:26px 0 16px}
 .step span{display:block;font-size:28px;line-height:1.35;color:#cfd7e4}
+.step.on{border-color:#f0a028}
 .chip{display:inline-flex;align-items:center;gap:10px;margin-top:26px;padding:10px 18px;border-radius:999px;border:2px dashed #3ddc84;color:#3ddc84;font-size:24px}
 .seg{position:absolute;top:720px;height:56px;border-radius:12px;display:flex;align-items:center;justify-content:center;font-size:24px;font-weight:700}
 .banner{position:absolute;left:150px;right:150px;top:938px;height:84px;border-radius:18px;background:#f0a028;color:#0e1420;font-size:36px;font-weight:700;display:flex;align-items:center;justify-content:center}
@@ -100,10 +101,30 @@ def process(st):
 <div class='seg{vis(1)}' style="left:1350px;width:420px;background:#f0a028;color:#0e1420">avatar</div>
 <div class='banner{vis(4)}' style="top:880px">This demo follows exactly the same structure.</div>{corner}""")
 
+STEPS = [("First meeting", "The teacher contacts us and books a meeting."),
+         ("Needs and fit", "We discuss what the course needs and check that an avatar fits."),
+         ("Studio session", "We record video, photos and audio in our studio."),
+         ("Avatar + voice", "The avatar and the voice are cloned and personalised."),
+         ("Lessons", "The teacher sends scripts and slides. We build the lessons.")]
+# our service; states: 0 title, 1..5 steps (current one highlighted, 5 also shows the summary banner)
+def service(st):
+    vis = lambda i: "" if st >= i else " hid"
+    cards = "".join(f"<div class='step{' on' if st == i + 1 else ''}{vis(i + 1)}' style='left:{150 + i * 330}px;width:300px;height:360px;padding:30px 28px'>"
+                    f"<div class=no>{i + 1}</div><b style='font-size:34px;margin:24px 0 14px'>{h}</b><span style='font-size:25px'>{t}</span></div>"
+                    for i, (h, t) in enumerate(STEPS))
+    arrows = "".join(f"<div class='{vis(i + 2).strip()}' style='position:absolute;left:{150 + i * 330 + 302}px;top:420px;width:26px;text-align:center;"
+                     f"font-size:30px;color:#f0a028'>›</div>" for i in range(4))
+    return page(f"""
+<div style="position:absolute;left:150px;top:64px"><div class=k>Our service</div>
+ <h1 style="font-size:62px;margin-top:14px">From first meeting to finished lessons</h1></div>
+{cards}{arrows}
+<div class='banner{vis(5)}' style="top:700px;font-size:32px">The teacher’s part: one meeting, one studio session, then scripts and slides.</div>{corner}""")
+
 if __name__ == "__main__":
     d = sys.argv[1]; os.makedirs(d, exist_ok=True)
     open(os.path.join(d, "intro.html"), "w").write(INTRO)
     open(os.path.join(d, "outro.html"), "w").write(OUTRO)
     for st in range(7): open(os.path.join(d, f"body_{st}.html"), "w").write(body(st))
     for st in range(5): open(os.path.join(d, f"process_{st}.html"), "w").write(process(st))
+    for st in range(6): open(os.path.join(d, f"service_{st}.html"), "w").write(service(st))
     print("wrote", d)

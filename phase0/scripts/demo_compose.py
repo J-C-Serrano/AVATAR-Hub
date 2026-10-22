@@ -1,11 +1,12 @@
-"""Compose the Zoom-alternative demo: demo_compose.py <demo dir> <avatar mp4> <split s> <nod loop mp4> <out mp4>
-<demo dir> holds png/ (from demo_slides.py + Firefox), {intro,body,process,outro}.wav and {body,process}_words.json (asr_words.py).
-The avatar video is InfiniteTalk output for intro + gap + outro audio; <split s> = where the outro part starts.
+"""Compose the Zoom-alternative demo:
+  demo_compose.py <demo dir> <intro avatar mp4> <outro avatar mp4> <outro start s> <nod loop mp4> <out mp4>
+<demo dir> holds png/ (from demo_slides.py + Firefox), {intro,body,process,service,outro}.wav and {body,process,service}_words.json
+(asr_words.py). Avatar videos are InfiniteTalk output; the outro part starts at <outro start s> of its video (one render may hold both).
 The voice-over slides get the small nodding avatar (LivePortrait loop) in the corner circle."""
 import json, os, re, subprocess, sys
 from PIL import Image, ImageDraw
 sys.path.insert(0, os.path.dirname(__file__)); from demo_slides import AV_X, AV_Y, AV_S, CX, CY, CS
-D, AV, SPLIT, NOD, OUT = sys.argv[1], sys.argv[2], float(sys.argv[3]), sys.argv[4], sys.argv[5]
+D, AV_IN, AV_OUT, SPLIT, NOD, OUT = sys.argv[1], sys.argv[2], sys.argv[3], float(sys.argv[4]), sys.argv[5], sys.argv[6]
 P = lambda *a: os.path.join(D, *a)
 dur = lambda f: float(subprocess.check_output(["ffprobe", "-v", "error", "-show_entries", "format=duration", "-of", "csv=p=0", f]))
 ff = lambda *a: subprocess.run(["ffmpeg", "-y", "-v", "error", *a], check=True)
@@ -16,9 +17,9 @@ m = Image.new("L", (AV_S, AV_S), 0); ImageDraw.Draw(m).rounded_rectangle([0, 0, 
 c = Image.new("L", (CS * 4, CS * 4), 0); ImageDraw.Draw(c).ellipse([0, 0, CS * 4 - 1, CS * 4 - 1], fill=255)
 c.resize((CS, CS), Image.LANCZOS).save(P("mask_circle.png"))
 
-def avatar_part(slide, wav, ss, name):
+def avatar_part(slide, wav, av, ss, name):
     t = dur(wav) + TAIL
-    ff("-loop", "1", "-i", P("png", slide), "-ss", f"{ss}", "-t", f"{t}", "-i", AV, "-loop", "1", "-i", P("mask.png"), "-i", wav,
+    ff("-loop", "1", "-i", P("png", slide), "-ss", f"{ss}", "-t", f"{t}", "-i", av, "-loop", "1", "-i", P("mask.png"), "-i", wav,
        "-filter_complex", f"[1:v]scale={AV_S}:{AV_S},format=rgba,tpad=stop_mode=clone:stop_duration=2[v];[2:v]format=gray[m];[v][m]alphamerge[a];"
        f"[0:v][a]overlay={AV_X}:{AV_Y}:shortest=1,format=yuv420p[o];[3:a]apad[s]", "-map", "[o]", "-map", "[s]", "-t", f"{t}", *ENC, P(name))
 
@@ -41,8 +42,9 @@ def voiceover_part(slide, n_states, cues, name):
 
 voiceover_part("body", 7, ["this tool turns", "first time", "second quality", "third reach", "and fourth control", "this does not replace"], "part_body.mp4")
 voiceover_part("process", 5, ["the avatar speaks", "in between", "if you like", "this demo follows"], "part_process.mp4")
-avatar_part("png_intro.png", P("intro.wav"), 0, "part_intro.mp4")
-avatar_part("png_outro.png", P("outro.wav"), SPLIT, "part_outro.mp4")
-with open(P("parts.txt"), "w") as f: f.write("".join(f"file 'part_{n}.mp4'\n" for n in ("intro", "body", "process", "outro")))
+voiceover_part("service", 6, ["first the teacher", "together we discuss", "if we agree", "once the avatar", "then we build"], "part_service.mp4")
+avatar_part("png_intro.png", P("intro.wav"), AV_IN, 0, "part_intro.mp4")
+avatar_part("png_outro.png", P("outro.wav"), AV_OUT, SPLIT, "part_outro.mp4")
+with open(P("parts.txt"), "w") as f: f.write("".join(f"file 'part_{n}.mp4'\n" for n in ("intro", "body", "process", "service", "outro")))
 ff("-f", "concat", "-safe", "0", "-i", P("parts.txt"), "-c", "copy", "-movflags", "+faststart", OUT)
 print(f"WROTE {OUT} {dur(OUT):.1f}s")
