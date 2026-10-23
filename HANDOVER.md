@@ -4,7 +4,7 @@
 > can pick up where the last one left off. **Read this first. Update it at the end of every
 > working session** (revise Status / Decisions / Next steps, append to the Changelog).
 
-Last updated: 2026-10-13 · Owner: Julio Serrano
+Last updated: 2026-10-23 · Owner: Julio Serrano
 
 > **Repo:** `git@github.com:J-C-Serrano/AVATAR-Hub.git` (**public**, own repo, branch `main`).
 > **Rule: at the end of every session, update this file, then `git add -A && git commit && git push`.**
@@ -402,3 +402,20 @@ Why: Julio rejected the EchoMimic segment approach (different head position at e
 - **Intro (Julio's wording):** "Hi, I am Julio Serrano's avatar. I have been created with a local artificial intelligence model, developed in-house. Please follow me through this demo." Rendered alone (`in/demo3_intro.{wav,json}` → `out/demo3_intro.mp4`, 13.6 s, 5 chunks, ~57 min). The outro is reused from `out/demo2_av.mp4` at 11.711 s. Note: the base models are open source; only the voice fine-tune is in-house ("personalised in-house" would be exact).
 - **Our service slide** (Julio's process): 1 first meeting → 2 needs and fit (is an avatar suitable) → 3 studio session (video, photos, audio) → 4 avatar + voice cloned → 5 teacher sends scripts/slides, we build the lessons. Banner: "The teacher's part: one meeting, one studio session, then scripts and slides." Placed before the outro so the demo keeps its own avatar → voice-over → avatar structure.
 - **Fixes:** the `.step.on` highlight border was overridden by `.step` (now shown); the structure slide benefits too. `demo_compose.py` now takes separate intro/outro avatar videos.
+
+## 31. Two new avatars 2026-10-23: Rodrigo Rabetino, Joni Salminen
+
+**Recipe for a new person (photos + recording, no studio video):**
+1. Voice: put the recording in `data/voices/<id>/recordings/` (profile via `store.create_voice`) and run `app/jobs/build_voice.py <id>` in `avatar-hub-app:p0` (dataset → LoRA r8 → refs → A/B/C auditions). If the recording has other speakers (Zoom Q&A), first cut + transcribe it, cut the Q&A off, and run `phase0/scripts/speaker_filter.py` (VoiceEncoder similarity to the main speaker); join the kept clips into one wav as the recording. The VoiceEncoder alone does **not** separate a moderator reliably (0.89 vs 0.95 typical), so cut by transcript too.
+2. Avatar speech: `phase0/scripts/say_clean.py <id> "<text>" <out.wav>` (stricter QC, below), never the plain path.
+3. Corner loop: LivePortrait `--loop 20 --style nodtilt --smile_base 0.35 --scale 2.0 --fps 25` on a frontal, mouth-closed still → encode `frames/` to `avatar_loop_20s.mp4`.
+4. Talking video: InfiniteTalk **image mode** (`cond_video` = png) from a waist-up crop (832x1040, head ~38% of height), lightx2v recipe (6 steps), ~55 min for 13 s alone. The model zooms in tighter than the source.
+
+**Speech QC (Julio: "remove hesitation and other artifacts … no speech errors"; legible beats 100% real):** the app's sentence-level QC passed a take with drawn-out words ("with a" 0.66 s, "this" 1.3 s) because Whisper's text hides them. `say_clean.py` scores each take with word timestamps: 3·WER + 2·stray + 2·fillers (uh/um/…) + 3·stretch (word longer than 0.075 s/letter + 0.15 s; final word +0.25 s) + 2·gaps (>0.25 s inside a sentence); up to 12 takes per sentence; calmer settings temp 0.6, exaggeration 0.35. Roughly half the takes fail; word timestamps cost ~20 s per take on GB10 (fine offline). Possessive name + "avatar" slurs ("Rabetino's avatar" → "Ravitinos-Avatar"): use "the avatar of <name>".
+
+**Rodrigo Rabetino** (`samples/Rodrigo Rabetino/`): 17 photos (`rodrigo-1663.zip` → `Studio/`), 10 min lecture video (voice), ElevenLabs clip as look reference (chest-up, hand gestures). Voice `data/voices/rodrigo-rabetino`: 89 clips / 9.0 min, val 4.83 → 4.33; **Julio chose B**. Loop `out/lp_rodrigo/avatar_loop_20s.mp4` (still `in/rodrigo_still.png` from 1678). Video: v1 `out/rodrigo_intro.mp4` rejected (voice stutter); **v2 `out/rodrigo_intro2.mp4`** (13.2 s, 576x704, say_clean voice, hand gestures at 4–6 s, model added a wristwatch).
+
+**Joni Salminen** (`samples/Joni Salminen/`): 18 photos (`edited.zip` → `Studio/`), 49 min Zoom lecture (`GMT20260908-081802_Recording.m4a`). Q&A from clip 451 ("That's it for the presentation. Johnny, …") cut; 442 clips / 42.6 min kept. Voice `data/voices/joni-salminen`: val 4.71 → 4.05 (best epoch 4); **Julio chose B**. Loop `out/lp_joni/avatar_loop_20s.mp4` (j-7, slight smile). Video from `in/joni_src.png` (j.jpg) + `in/joni_intro.wav` → `out/joni_intro.mp4`.
+
+**Consent:** both profiles were created by Julio on their behalf; their own consent statements are still to be filed.
+**Gotchas:** a `while pgrep -f "<pattern>"` wait loop matches its own command line and never ends (wait on a log line instead); paths contain a space ("AVATAR Hub"), so wrap docker calls in a shell function, not an unquoted `$R` string.
