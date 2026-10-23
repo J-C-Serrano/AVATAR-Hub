@@ -4,7 +4,7 @@
 > can pick up where the last one left off. **Read this first. Update it at the end of every
 > working session** (revise Status / Decisions / Next steps, append to the Changelog).
 
-Last updated: 2026-10-23 · Owner: Julio Serrano
+Last updated: 2026-10-23 (late) · Owner: Julio Serrano
 
 > **Repo:** `git@github.com:J-C-Serrano/AVATAR-Hub.git` (**public**, own repo, branch `main`).
 > **Rule: at the end of every session, update this file, then `git add -A && git commit && git push`.**
@@ -419,3 +419,21 @@ Why: Julio rejected the EchoMimic segment approach (different head position at e
 
 **Consent:** both profiles were created by Julio on their behalf; their own consent statements are still to be filed.
 **Gotchas:** a `while pgrep -f "<pattern>"` wait loop matches its own command line and never ends (wait on a log line instead); paths contain a space ("AVATAR Hub"), so wrap docker calls in a shell function, not an unquoted `$R` string.
+
+## 32. Lecture videos 2026-10-23: Joni LC1 (his slides), Rodrigo (rebuilt from a recording)
+
+**Asks.** Joni: use his `LC1_Introduction to AI and ML.pptx` unchanged, the notes are the script; avatar intro + outro, voice-over with the nodding avatar where it is not in the way, bullets appearing as the voice reaches them. Rodrigo: 1:1 remake of his recorded lecture (`samples/Rodrigo Rabetino/YTD…mp4`, no pptx) — rebuild the deck with its animations, his avatar + voice in intro/outro, voice-over + nodding avatar in between.
+
+**Pipeline (all in `phase0/scripts/`):**
+1. Script → `in/<lec>/spoken.txt` (blocks `### N`; a sentence starting `[+]` = next click/build; `[silence N]` = silent slide). Speakable rewrite only: symbols → words, obvious typos fixed, terms the voice garbles respelled by `say_clean.py`'s LEXICON (tested with `spell_test.py`).
+2. Voice: `say_clean.py <voice> --script spoken.txt --outdir out/<lec>/voice [--slides 2-15]` (resumable; run 3–4 workers in parallel, CPU-bound word timestamps). Bodies used `--takes 8 --accept 0.45`. Writes `slide_NN.wav/.json` with sentence times.
+3. Review: list sentences with `wer>0` or score > 0.9; re-check suspects in context; re-voice single sentences with `say_clean.py --text … [--keep]` and splice with `voice_patch.py <voice dir> <slide>:<row>=<take.wav>` (level-matched, later times shifted, originals kept as `.orig`).
+4. States: `deck_build.py deck.pptx out/<lec>/states` renders every build step via LibreOffice (hidden text = fully transparent, so nothing reflows; decks with shapes named `u<k>_…` use those as explicit click units).
+5. Intro/outro talking avatar: slide 1 wav + 1.2 s + last slide wav → one InfiniteTalk run (`--max_frame_num 1100` for ~41 s); split time in the compose call.
+6. Compose: `lecture_compose.py --states … --voice … --intro av.mp4 --outro av.mp4 --outro_ss <split> --nod <loop> --out …` (`--clip N=mp4` plays a clip instead of slide N, `--preroll`, `--corner tr` fixes the circle, `--place N=tr:140` per slide, `--only`/`--reuse` for partial renders). Reveal times = `[+]` cues, else keyword matching. Circle: a clean corner (12 px clearance) first, else the clearest edge spot (30 px), 140 px if needed. Audio of each part levelled to −16 LUFS (fixed gain + limiter).
+7. Final check: `lecture_asr_diff.py lecture.mp4 spoken.txt` (whole-video Whisper vs script). Long-form chunking invents repeats/loops at 30 s seams — re-transcribe each suspect in a short window before acting.
+
+**Joni LC1:** 34 slides, 133 build states, `out/lc1/LC1_lecture.mp4` (34.4 min, 1920x1080). Fixed after review: 7 sentences re-voiced (dropped "In"/"It's", "we're taking"→"retaking", "Note: … AGI"→"No … ATI" twice, a stray syllable after "We have tested this.", "software we use"→"reuse"); spoken text changed to "It is machines…", "we are taking…", "Note that, …", "software that we use". Fonts: Aptos (Microsoft download) in `~/.local/share/fonts` or LibreOffice renders his text too wide.
+**Rodrigo:** deck rebuilt as `out/rod_lec/Rabetino_Business_Models_rebuilt.pptx` (`rod_deck.py`, python-pptx venv; 9 slides, real "appear on click" animations, clock movie embedded; Open Sans + Georgia→Gelasio for rendering; text overlays the recording within a few px). Video: countdown preroll, silent section card, voice-over with the circle top-right where his webcam was (it covers the university logo there, as the webcam did), silent clock clip, thank-you outro. Narration = his own words with stutters/repeats removed; 2 sentences re-voiced ("with a a", "85%"→"85 partners"; now "eighty-five percent").
+**QC changes:** `say_clean.py` now adds 2 per repeated word (an extra "a" barely moves the WER). AGI in Joni's voice: "eh-jee-eye" is heard right 5/6 in isolation but can still flip to "ATI" in context — check in context.
+**Gotchas:** InfiniteTalk (~68 GB) + Chatterbox model loading at the same moment fails with OOM in the TTS (retry once the render is past loading); `out/<lec>/queue_av.sh` waits for all voice containers. A state render cut short leaves missing `slide_NN_kK.png` (compose then fails) — rerun `deck_build.py`.
