@@ -4,7 +4,7 @@
 > can pick up where the last one left off. **Read this first. Update it at the end of every
 > working session** (revise Status / Decisions / Next steps, append to the Changelog).
 
-Last updated: 2026-10-13 · Owner: Julio Serrano
+Last updated: 2026-10-27 · Owner: Julio Serrano
 
 > **Repo:** `git@github.com:J-C-Serrano/AVATAR-Hub.git` (**public**, own repo, branch `main`).
 > **Rule: at the end of every session, update this file, then `git add -A && git commit && git push`.**
@@ -402,3 +402,58 @@ Why: Julio rejected the EchoMimic segment approach (different head position at e
 - **Intro (Julio's wording):** "Hi, I am Julio Serrano's avatar. I have been created with a local artificial intelligence model, developed in-house. Please follow me through this demo." Rendered alone (`in/demo3_intro.{wav,json}` → `out/demo3_intro.mp4`, 13.6 s, 5 chunks, ~57 min). The outro is reused from `out/demo2_av.mp4` at 11.711 s. Note: the base models are open source; only the voice fine-tune is in-house ("personalised in-house" would be exact).
 - **Our service slide** (Julio's process): 1 first meeting → 2 needs and fit (is an avatar suitable) → 3 studio session (video, photos, audio) → 4 avatar + voice cloned → 5 teacher sends scripts/slides, we build the lessons. Banner: "The teacher's part: one meeting, one studio session, then scripts and slides." Placed before the outro so the demo keeps its own avatar → voice-over → avatar structure.
 - **Fixes:** the `.step.on` highlight border was overridden by `.step` (now shown); the structure slide benefits too. `demo_compose.py` now takes separate intro/outro avatar videos.
+
+## 31. Two new avatars 2026-10-23 (Teacher A, Teacher B)
+
+Teachers are named by pseudonym in this public file; the local key is `phase0/in/PEOPLE.md` (git-ignored). Lecture content, teacher names, per-course pronunciation lists and deck builders stay in git-ignored folders (`samples/`, `phase0/in/`, `phase0/out/`, `data/`).
+
+**Recipe for a new person (photos + recording, no studio video):**
+1. Voice: put the recording in `data/voices/<id>/recordings/` (profile via `store.create_voice`) and run `app/jobs/build_voice.py <id>` in `avatar-hub-app:p0` (dataset → LoRA r8 → refs → A/B/C auditions). If the recording has other speakers (Zoom Q&A), first cut + transcribe it, cut the Q&A off, and run `phase0/scripts/speaker_filter.py` (VoiceEncoder similarity to the main speaker); join the kept clips into one wav as the recording. The VoiceEncoder alone does **not** separate a moderator reliably (0.89 vs 0.95 typical), so cut by transcript too.
+2. Avatar speech: `phase0/scripts/say_clean.py <id> --text "<text>" --out <out.wav>` (stricter QC, below), never the plain path.
+3. Corner loop: LivePortrait `--loop 20 --style nodtilt --smile_base 0.35 --scale 2.0 --fps 25` on a frontal, mouth-closed still → encode `frames/` to `avatar_loop_20s.mp4`.
+4. Talking video: InfiniteTalk **image mode** (`cond_video` = png) from a waist-up crop (832x1040, head ~38% of height), lightx2v recipe (6 steps), ~55 min for 13 s alone. The model zooms in tighter than the source.
+
+**Speech QC (Julio: "remove hesitation and other artifacts … no speech errors"; legible beats 100% real):** the app's sentence-level QC passed a take with drawn-out words ("with a" 0.66 s, "this" 1.3 s) because Whisper's text hides them. `say_clean.py` scores each take with word timestamps (see §33 for the current formula); up to 12 takes per sentence; calmer settings temp 0.6, exaggeration 0.35. Roughly half the takes fail; word timestamps cost ~20 s per take on GB10 (fine offline). Possessive surname + "avatar" slurs into one word: use "the avatar of <name>".
+
+**Teacher A:** 17 studio photos, 10 min recorded lecture (voice source), a previous avatar clip as look reference (chest-up, hand gestures). Voice: 89 clips / 9.0 min, val 4.83 → 4.33; Julio chose audition B. Intro v1 rejected (voice stutter); v2 (13.2 s, 576x704, say_clean voice, hand gestures at 4–6 s, the model added a wristwatch).
+**Teacher B:** 18 studio photos, 49 min Zoom lecture; Q&A at the end cut (by transcript); 442 clips / 42.6 min kept. Voice val 4.71 → 4.05 (best epoch 4); Julio chose B. Intro 12.4 s, 576x704, ~50 min render; brief thumbs-up at ~0.8 s, open-hand gesture at ~5.4 s, no colour drift.
+
+**Consent:** both profiles were created by Julio on their behalf; their own consent statements are still to be filed.
+**Gotchas:** a `while pgrep -f "<pattern>"` wait loop matches its own command line and never ends (wait on a log line instead); paths contain a space ("AVATAR Hub"), so wrap docker calls in a shell function, not an unquoted `$R` string.
+
+## 32. Lecture videos 2026-10-23: Teacher B (own slides), Teacher A (rebuilt from a recording)
+
+**Asks.** Teacher B: use the teacher's own pptx unchanged, the slide notes are the script; avatar intro + outro, voice-over with the nodding avatar where it is not in the way, bullets appearing as the voice reaches them. Teacher A: 1:1 remake of a recorded lecture (video only, no pptx) — rebuild the deck with its animations, the avatar + voice in intro/outro, voice-over + nodding avatar in between.
+
+**Pipeline (all in `phase0/scripts/`):**
+1. Script → `in/<lec>/spoken.txt` (blocks `### N`; a sentence starting `[+]` = next click/build; `[silence N]` = silent slide). Speakable rewrite only: symbols → words, obvious typos fixed, terms the voice garbles respelled (generic terms in `say_clean.py`'s LEXICON, names and course terms in `in/<lec>/lexicon.json`, tested with `spell_test.py`). Then `script_lint.py spoken.txt` (§34).
+2. Voice: `say_clean.py <voice> --script spoken.txt --outdir out/<lec>/voice --lexicon in/<lec>/lexicon.json [--slides 2-15]` (resumable; run 3–4 workers in parallel, CPU-bound word timestamps). Writes `slide_NN.wav/.json` with sentence times.
+3. Review: list sentences with `wer>0` or score > 0.9; re-check suspects in context; re-voice single sentences with `say_clean.py --text … [--keep]` and splice with `voice_patch.py <voice dir> <slide>:<row>=<take.wav>` (level-matched, later times shifted, originals kept as `.orig`).
+4. States: `deck_build.py deck.pptx out/<lec>/states` renders every build step via LibreOffice (hidden text = fully transparent, so nothing reflows; decks with shapes named `u<k>_…` use those as explicit click units). A deck rebuilt from a recording is made with a per-lecture python-pptx script kept in `in/<lec>/` (it holds the lecture's text, so it is not committed): shapes named `u<k>_…` for click order, the recording's frames as placement reference.
+5. Intro/outro talking avatar: slide 1 wav + 1.2 s + last slide wav → one InfiniteTalk run (`--max_frame_num 1100` for ~41 s); split time in the compose call. Only one of them changed → render it alone and pass it as `--intro`/`--outro` with `--intro_ss/--outro_ss 0`.
+6. Compose: `lecture_compose.py --states … --voice … --intro av.mp4 --outro av.mp4 --outro_ss <split> --nod <loop> --out …` (`--clip N=mp4` plays a clip instead of slide N, `--preroll`, `--corner tr` fixes the circle, `--place N=tr:140` per slide, `--only`/`--reuse` for partial renders). Reveal times = `[+]` cues, else keyword matching. Circle: a clean corner (12 px clearance) first, else the clearest edge spot (30 px), 140 px if needed. Audio of each part levelled to −16 LUFS (fixed gain + limiter).
+7. Final check: `lecture_asr_diff.py lecture.mp4 spoken.txt` (whole-video Whisper vs script) and `disfl_full.py lecture.mp4` (§33). Long-form chunking invents repeats/loops at 30 s seams — re-transcribe each suspect in a short window before acting.
+
+**Teacher B:** 34 slides, 133 build states, 34.4 min, 1920x1080. Fixed after review: 7 sentences re-voiced (swallowed first words, a word heard as a different word, an acronym heard as another acronym — twice, a stray syllable after a sentence); where a take kept failing, the spoken text was reworded slightly (contraction expanded, "that" added). Fonts: Aptos (Microsoft download) in `~/.local/share/fonts` or LibreOffice renders the text too wide.
+**Teacher A:** deck rebuilt (python-pptx venv; 9 slides, real "appear on click" animations, a movie clip embedded; Open Sans + Georgia→Gelasio for rendering; text overlays the recording within a few px). Video: countdown preroll, silent section card, voice-over with the circle top-right where the webcam was (it covers the university logo there, as the webcam did), silent clip, thank-you outro. Narration = the teacher's own words with stutters/repeats removed; percentages are written out as words ("85%" was heard as "85 partners").
+**QC changes:** `say_clean.py` penalises repeated words (an extra "a" barely moves the WER). Spelled-out acronyms can be heard right in isolation and still flip in context — check in context.
+**Gotchas:** InfiniteTalk (~68 GB) + Chatterbox model loading at the same moment fails with OOM in the TTS (retry once the render is past loading). A state render cut short leaves missing `slide_NN_kK.png` (compose then fails) — rerun `deck_build.py`.
+
+## 33. Fluent narration (Teacher A re-voiced) 2026-10-26
+
+**Ask.** The narration still had "ehh", "hmm", "uh" and stutters; tone and accent were right. Wanted: fluent, legible speech, natural intonation at commas and full stops (not a perfect clone of a disfluent delivery).
+
+**Why the old QC missed it.** Whisper drops fillers and repeats from its transcript by default, so `say_clean.py` scored disfluent takes as clean. Prompting Whisper with disfluent text (`DISFL_PROMPT`) makes it write "uh", "eh", "the, the".
+
+**Changes.**
+- `say_clean.py`: score = 3·WER + 2·stray + 3·fillers + 3·repeats + 3·stretch + 2·gaps; fillers/repeats from a second Whisper pass with the disfluent prompt. Pauses after punctuation are no longer penalised (they were steering selection towards takes that run commas together). Long sentences split only above 48 words (pieces generated alone end with falling, full-stop intonation). Each take is trimmed to its speech, then fixed pauses: comma split 0.25 s, full stop 0.45 s, question 0.55 s, paragraph 0.8 s. `--cfg` overrides cfg_weight.
+- `disfl_scan.py` (filler/repeat scan of wavs), `disfl_rows.py` (every sentence alone, padded and with neighbours; 2 of 3 votes), `disfl_full.py` (whole lecture, 12 s windows every 6 s, each hit re-checked in 3 windows).
+
+**Findings.** Fillers come in bursts: a take is either clean or full of "uh". cfg_weight 0.3: 0 fillers in 18 test takes vs 8 at 0.0 (speaker similarity 0.919 vs 0.927, ~17% faster speech). Recipe: re-voice with the profile settings (cfg 0) + the new QC, 12 takes/sentence; sentences that still have a filler or stutter in context → cfg 0.2 takes (`--keep`) that are clean alone and with both neighbours. 10 sentences patched in all. The disfluent-prompt detector is noisy (the same take can pass alone and fail in context, and a window cut mid-word invents words), so only act on spots heard in 2+ variants. A name as the last word of a sentence can come out garbled — put it mid-sentence.
+
+**Result.** 8:23 (was 8:47); whole-video scan 0 confirmed spots (was 4).
+
+## 34. Rules for every course (2026-10-27)
+
+- **The avatar knows it is an avatar.** Anything only the real teacher can do — be contacted, answer questions, receive email, share material, meet students, "see you next week" — names the teacher in the third person ("you can let <Name> know by email", "<Name>'s email address"), never "let me know" / "my email". `script_lint.py in/<lec>/spoken.txt` flags these lines (exit 1) and lists first-person opinions as notes (those may stay). Run it before voicing.
+- **Public repo = method only.** Commit scripts, Dockerfiles, patches and docs. Never commit lecture content (slide text, scripts, notes, deck builders for a specific lecture), teacher names, per-course pronunciation lists, emails, media or models. Per-course files live in `phase0/in/<lec>/` (git-ignored); HANDOVER uses pseudonyms (key: `phase0/in/PEOPLE.md`). History was rewritten on 2026-10-27 to remove names and lecture content from all earlier commits.
