@@ -2,6 +2,7 @@
 usage (in avatar-hub-app:p0): python asr_long_words.py <in.wav 16k> <out.json>"""
 import json, sys, torch, librosa
 from transformers import pipeline
+import whisper_fast; whisper_fast.install()   # lossless: no per-tensor GPU syncs in word timestamps (whisper_fast.py)
 asr = pipeline("automatic-speech-recognition", model="openai/whisper-large-v3-turbo", device="cuda", dtype=torch.float16,
                model_kwargs={"attn_implementation": "eager"})
 w, _ = librosa.load(sys.argv[1], sr=16000)

@@ -5,6 +5,7 @@ sound that no transcribed word covers (a hum between words) and words much longe
 import re, sys
 import numpy as np, torch, librosa
 from transformers import pipeline
+import whisper_fast; whisper_fast.install()   # lossless: no per-tensor GPU syncs in word timestamps (whisper_fast.py)
 asr = pipeline("automatic-speech-recognition", model="openai/whisper-large-v3-turbo", device="cuda", dtype=torch.float16,
                model_kwargs={"attn_implementation": "eager"})
 PROMPT = "Umm, so, uh, I mean, hmm, eh, like, you know, ah, the the, erm, okay."

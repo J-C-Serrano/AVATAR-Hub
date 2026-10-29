@@ -457,3 +457,89 @@ Teachers are named by pseudonym in this public file; the local key is `phase0/in
 
 - **The avatar knows it is an avatar.** Anything only the real teacher can do — be contacted, answer questions, receive email, share material, meet students, "see you next week" — names the teacher in the third person ("you can let <Name> know by email", "<Name>'s email address"), never "let me know" / "my email". `script_lint.py in/<lec>/spoken.txt` flags these lines (exit 1) and lists first-person opinions as notes (those may stay). Run it before voicing.
 - **Public repo = method only.** Commit scripts, Dockerfiles, patches and docs. Never commit lecture content (slide text, scripts, notes, deck builders for a specific lecture), teacher names, per-course pronunciation lists, emails, media or models. Per-course files live in `phase0/in/<lec>/` (git-ignored); HANDOVER uses pseudonyms (key: `phase0/in/PEOPLE.md`). History was rewritten on 2026-10-27 to remove names and lecture content from all earlier commits.
+
+## 35. Full course for Teacher A, batch run 2026-10-27 (stopped by OOM, resume from here)
+
+**Ask.** The rest of Teacher A's course: one avatar lecture per original recording (9 recordings in 3 modules, ~3 h of source; M1_01 = the §32/§33 lecture). Use the Moodle PDF slides instead of the video frames, keep the video's build order and timing. Normal (bf16) quality, no fp8.
+
+**Done.**
+- Recordings downloaded with yt-dlp (`~/.local/venvs/ytdlp`, run as `~/.local/bin/yt-dlp`) to `samples/<teacher>/course/` (git-ignored).
+- Video ↔ PDF map: Modules I–II match the PDFs; Module III uses the older 2021 deck (the 2023 deck is mostly material with no recording). 2 slides are in no PDF: rebuilt from the video in the same style (a symbol font was needed for the arrows/check marks).
+- Build states from the PDF pages: builds detected in the video, the area each build adds found by diffing against the finished page, revealed in order (`pdf_states.py`; per lecture `out/<lec>/states/reveals.json`).
+- Transcription: segment-level Whisper per lecture (`asr_long_segs.py`; 39 s for 7 min, word-level pass was >14 min) → `script_draft.py` makes `spoken_draft.txt` with `[+]` cues at the build times.
+- `spoken.txt` written and `script_lint.py`-clean for M2_04, M3_02, M3_01, M2_02, M2_03. Intro line: "Hi, I am the avatar of <Name>. Welcome to this lecture on <topic>." End card = the M1_01 outro wav copied in. Course-wide names added to every `lexicon.json`.
+- Intro voices (slide 1) exist for M1_02, M1_03, M2_01, M2_02, M2_03, M2_04.
+- InfiniteTalk speed-up (patch in `phase0/patches/infinitetalk_aarch64.patch`): unused single-speaker attention map and per-pass cache cleanup removed → ~8% faster per step, byte-identical output. fp8 tested: only ~5–10% faster overall, dropped.
+
+**What failed.** `out/rod_intro_queue.sh` (one InfiniteTalk intro per lecture) ran while 3–5 `say_clean.py` voice containers were loading. InfiniteTalk (~70 GB) + Chatterbox → kernel OOM kills at 15:15, 15:18, 15:20, 15:23, then the machine froze (~15:25). **No intro mp4 exists**; the queue printed "done" anyway (it does not check the output). `out/voice_launch.sh` only waits for the render's *loading* phase, which was not enough.
+
+**Open / next.**
+1. Make the intro queue check `out/rod_<k>_intro.mp4` exists and stop on failure.
+2. Never overlap heavy jobs: all voicing first (3–4 workers), then the intros one at a time with nothing else on the machine (sharing the GPU also slows steps by up to 60%).
+3. M1_02 and M2_01 transcripts have gaps >20 s (M1_02: 68–167, 385–569, 1145–1328, 1466–1509, 2085–2129 s; M2_01: 204–266, 714–749 s): long-file Whisper skipped speech. `asr_slides.py` (per-slide transcription) was being written to fix this, not yet run.
+4. Scripts still to write: M1_02, M1_03, M2_01, M3_03. Then voice → review → intros → compose → whole-lecture checks (§32 steps 2–7) for all 8.
+
+**Fix (2026-10-28, resumed after the reboot).** All GPU work for the course goes through `phase0/scripts/job_runner.sh <queue>`:
+light jobs (voice, ASR) up to 3 at once and never while an InfiniteTalk container runs; heavy jobs (InfiniteTalk) one at a time,
+only with no light job running or queued, no app/TTS container up and >= 90 GB free; `HOLD_HEAVY` in the queue dir holds renders
+until every voice job is queued. Each job names its output (`# expect:`); a missing output = failure, retried once, then `failed/`.
+Containers carry memory caps (voice 24 GB, InfiniteTalk `IT_MEM` 100 GB in `infinitetalk_run.sh`), so a runaway job is killed alone.
+Course queue helper (git-ignored): `phase0/out/rod_q.py voice|asr|intro <lec> [slides]`. Per-slide ASR (`asr_slides.py`) is used
+for every lecture whose long-file transcript had gaps or looped hallucinations (M1_02, M1_03, M2_01, M3_03).
+**Status 2026-10-28 08:20.** All 9 `spoken.txt` written (per-slide ASR used for M1_02, M1_03, M2_01, M3_03; it also recovered speech hidden by Whisper loops), lint-clean, `[+]` cue counts = build counts. 43 voice jobs and 9 intro renders queued in `phase0/out/queue`.
+**Throughput (2026-10-28 08:40).** `say_clean.py` at accept 0.3 / 12 takes: ~6.6 takes per sentence, ~35 s per take with 3 workers
+(~5 takes/min in all); 42% of sentences never reach 0.3 and use all 12 takes (main reason: a stretched word, mostly "the" at ~0.5 s, i.e. the
+hesitation the QC exists for; takes 7-12 still help a lot, so the limits stay). ~1,260 sentences left = ~26 h at that rate.
+Changes: the second (disfluency) Whisper pass is skipped when the timing/WER part of a take already reaches the best score so far (the extra
+terms only add, so the chosen take is identical). The runner reads `<queue>/LIGHT_MAX` every loop, adopts jobs still running from a previous
+runner, holds `<queue>/runner.lock` (a second runner refuses to start; `runner.pid` for restarts) and has a memory watchdog: Chatterbox GPU
+allocations are NOT charged to the container `--memory` cap (docker stats shows <1 GB while free memory drops ~17 GB per worker), so below
+`MIN_FREE_GB` (12) it stops and requeues the newest light job and gives up one slot. 5 workers = ~30 GB free.
+**Real bottleneck found (2026-10-28 13:00).** Per-take profile (`take_profile.py`): T3 tokens 9.7 s (18%), S3Gen 1.6 s, Whisper
+word-timestamp pass **40.9 s (77%)**, disfluency pass 0.8 s. cProfile (`asr_words_profile.py`): 250 `.cpu()` calls at ~0.14 s each inside
+transformers 5.2 `WhisperGenerationMixin._postprocess_outputs` → `split_by_batch_index` (every attention tensor of every step/layer is copied
+to the CPU one by one, then `_stack_split_outputs` copies it back). Each copy is a GPU sync, and with several processes time-sharing the GPU
+each sync waits for the process's next time slice; that is also why 5 workers were only 13% faster than 3 and why MPS showed no gain while
+non-MPS processes shared the GPU. Fix: `scripts/whisper_fast.py` (`install()` keeps exactly those tensors on the GPU; the pipeline moves
+its final outputs to the CPU itself). A/B (`whisper_fast_check.py`, 8 word-timestamp calls incl. the disfluent prompt): 293 s → 4.6 s,
+identical text, words and timestamps. Installed in say_clean, disfl_scan, asr_long_words, asr_words, asr_slides, lecture_asr_diff.
+**Gotcha:** `pgrep -f "<script> <args>" | head -1` can match your own shell (its command line contains the pattern) — two runners ran for
+a minute and started 6 workers; kill by `runner.pid` only.
+
+## 36. Teacher A course finished 2026-10-29: review, state repair, whole-lecture checks
+
+**Overnight failure (10-28 → 10-29).** All 9 intro renders were rejected at 01:40 by the intro voice guard: `grep -q "^ROW"` also matches
+the `ROWS_DONE` line that `disfl_rows.py` prints when everything is clean (fixed: `"^ROW "`). The GPU then sat idle for 6.5 h because
+nothing woke the operator. Rule since then (memory `unattended-runs-self-heal`): an unattended run always has a re-armed Monitor on
+`out/queue/runner.log` (FAILED / done / empty queue / dead runner / low memory) and every failure is diagnosed, fixed without lowering
+quality, and requeued. Two voice jobs also failed twice: a one-word sentence ("No.") crashes Chatterbox's alignment analyzer
+(`A[completed_at:, :-5]` is empty) on every seed → `say_clean.py` now voices 1-2 word sentences together with a neighbour, and skips a
+take whose `generate` raises IndexError.
+
+**Voice QC fixes.**
+- The WER check skips numbers, but its number list lacked teens/tens/"percent": every year written as words counted as misheard (fixed `NUM`).
+- `revoice.py --force` patches the best new take even if it scores worse; for takes whose old version has a misheard word the score cannot
+  see (e.g. "nine fourteen" is one Whisper token = one "stretched" word). Always followed by `disfl_rows.py`; a forced take can bring a stutter.
+- Abbreviations split sentences ("St. X", "A. B. Name"): written without the inner full stop in spoken.txt.
+- Numbers the TTS garbles (a model number, years) are written as words in spoken.txt.
+- A sentence that stutters on every take is reworded (same meaning), never accepted.
+- **Whole-lecture check is required:** `lecture_asr_diff.py` + `disfl_full.py` on the composed mp4 found real stutters/fillers that the
+  per-sentence 2-of-3 vote had passed (M1_03: 4, M1_02: 6, M2_01: 3, M2_03: 2). Spots that are a sentence end + same word starting the
+  next sentence ("…build it. It is…") and repeats in the script itself ("is, is this…") are not errors.
+
+**Build states: `states_check.py` / `states_repair.py`.** `pdf_states.py` output had real defects in early builds (box borders, footers
+and titles wiped with a later build's mask; later builds not hidden; a later build overlapping the logo showing through the protected logo
+box). `states_repair.py <rec.mp4> <states>` compares each early state with the recording at that moment (median of 5 frames, so a pointer is
+not baked in), at 1/4 resolution with a 1-coarse-px shift tolerance both ways (the PDF renderer spaces text up to ~3 px differently from the
+deck, so full-res pixel rules always leave halos), and only changes what is visibly wrong: page pixels where the page agrees with the
+recording, else the plain-background fill. Raw recording pixels are never pasted (seams). Extra rules: footer letters restored one by one
+(long PDF-only edges removed first), the plain logo (median over the lecture's final pages) when a later build overlaps the logo box,
+webcam (top right) and the recording's own logo (bottom right) excluded, nothing else on the right strip. `--sheet` writes each changed
+state next to the recording for review; **every sheet is reviewed by eye**. Per slide, after review: `--lines N` (text slides rebuilt line
+by line from the page: a line is shown when the recording shows it; crisp, best for bullet lists) or `--collapse N` (full page from the
+start, no build-up) where the PDF page is not what the recording shows (a sketch that builds up in the deck but is finished in the PDF,
+different text, a clock video). Decisions are kept in `phase0/in/rod_states_review.txt` (git-ignored). Ink-based automatic metrics did not
+match what is visible and are not used to decide.
+
+**Result.** 10 lectures composed (`out/<lec>/<Teacher>_<K>.mp4`; M1_01 re-assembled with PDF states and one
+build rebuilt by hand where the recording showed a clock video instead of the slide). Nodding circle bottom right (auto corner; the PDF logo is top right).

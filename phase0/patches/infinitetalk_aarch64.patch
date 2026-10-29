@@ -77,8 +77,56 @@ index 9f11ef7..365257b 100644
          x = rearrange(x, "B M H K -> B H M K")
  
          # linear transform
+diff --git a/wan/modules/multitalk_model.py b/wan/modules/multitalk_model.py
+index 958e930..abb0769 100644
+--- a/wan/modules/multitalk_model.py
++++ b/wan/modules/multitalk_model.py
+@@ -21,6 +21,8 @@ try:
+ except:
+     USE_SAGEATTN = False
+ 
++import os as _os
++_SKIP_REF=[False]
+ __all__ = ['WanModel']
+ 
+ 
+@@ -60,7 +62,7 @@ def rope_apply(x, grid_sizes, freqs):
+     for i, (f, h, w) in enumerate(grid_sizes.tolist()):
+         seq_len = f * h * w
+ 
+-        x_i = torch.view_as_complex(x[i, :s].to(torch.float64).reshape(
++        x_i = torch.view_as_complex(x[i, :s].to(torch.float32 if _os.environ.get('IT_ROPE32') else torch.float64).reshape(
+             s, n, -1, 2))
+         freqs_i = torch.cat([
+             freqs[0][:f].view(f, 1, 1, -1).expand(f, h, w, -1),
+@@ -68,7 +70,7 @@ def rope_apply(x, grid_sizes, freqs):
+             freqs[2][:w].view(1, 1, w, -1).expand(f, h, w, -1)
+         ],
+                             dim=-1).reshape(seq_len, 1, -1)
+-        freqs_i = freqs_i.to(device=x_i.device)
++        freqs_i = freqs_i.to(device=x_i.device, dtype=x_i.dtype)
+         x_i = torch.view_as_real(x_i * freqs_i).flatten(2)
+         x_i = torch.cat([x_i, x[i, seq_len:]])
+ 
+@@ -165,6 +167,8 @@ class WanSelfAttention(nn.Module):
+         # output
+         x = x.flatten(2)
+         x = self.o(x)
++        if _SKIP_REF[0]:
++            return x, None
+         with torch.no_grad():
+             x_ref_attn_map = get_attn_map_with_target(q.type_as(x), k.type_as(x), grid_sizes[0], 
+                                                     ref_target_masks=ref_target_masks)
+@@ -665,6 +669,7 @@ class WanModel(ModelMixin, ConfigMixin):
+         latter_frame_audio_emb_s = torch.concat([latter_first_frame_audio_emb, latter_middle_frame_audio_emb, latter_last_frame_audio_emb], dim=2) 
+         audio_embedding = self.audio_proj(first_frame_audio_emb_s, latter_frame_audio_emb_s) 
+         human_num = len(audio_embedding)
++        _SKIP_REF[0] = _os.environ.get('IT_REFMAP') != '1' and human_num == 1   # map only used for 2+ speakers
+         audio_embedding = torch.concat(audio_embedding.split(1), dim=2).to(x.dtype)
+ 
+ 
 diff --git a/wan/multitalk.py b/wan/multitalk.py
-index be7819e..1bed88e 100644
+index be7819e..9a1fa16 100644
 --- a/wan/multitalk.py
 +++ b/wan/multitalk.py
 @@ -1,6 +1,5 @@
@@ -88,20 +136,46 @@ index be7819e..1bed88e 100644
  import logging
  import json
  import math
-@@ -35,8 +34,11 @@ from wan.utils.utils import convert_video_to_h264, extract_specific_frames, get_
+@@ -35,10 +34,16 @@ from wan.utils.utils import convert_video_to_h264, extract_specific_frames, get_
  from wan.wan_lora import WanLoraWrapper
  
  from safetensors.torch import load_file
 -from optimum.quanto import quantize, freeze, qint8,requantize
 -import optimum.quanto.nn.qlinear as qlinear
+-
 +try:
 +    from optimum.quanto import quantize, freeze, qint8,requantize
 +    import optimum.quanto.nn.qlinear as qlinear
 +except Exception:
 +    qlinear = None
- 
++
++import os as _os, time as _time
++_FWD=[]
  def torch_gc():
++    if _os.environ.get('IT_GC') != '1': return   # per-pass empty_cache only slows sampling (output identical)
      torch.cuda.empty_cache()
+     torch.cuda.ipc_collect()
+ 
+@@ -712,8 +717,17 @@ class InfiniteTalkPipeline:
+                     latent_model_input = [latent.to(self.device)]
+ 
+                     # inference with CFG strategy
+-                    noise_pred_cond = self.model(
+-                    latent_model_input, t=timestep, **arg_c)[0] 
++                    if _os.environ.get('IT_TIME'): torch.cuda.synchronize(); _t0=_time.time()
++                    if _os.environ.get('IT_PROF') and i==1:
++                        from torch.profiler import profile, ProfilerActivity
++                        with profile(activities=[ProfilerActivity.CPU,ProfilerActivity.CUDA]) as _pr:
++                            noise_pred_cond = self.model(latent_model_input, t=timestep, **arg_c)[0]
++                            torch.cuda.synchronize()
++                        print(_pr.key_averages().table(sort_by="cuda_time_total", row_limit=25), flush=True)
++                    else:
++                        noise_pred_cond = self.model(
++                        latent_model_input, t=timestep, **arg_c)[0] 
++                    if _os.environ.get('IT_TIME'): torch.cuda.synchronize(); print(f"FWD {_time.time()-_t0:.2f}s", flush=True)
+                     torch_gc()
+ 
+                     if math.isclose(text_guide_scale, 1.0):
 diff --git a/wan/utils/multitalk_utils.py b/wan/utils/multitalk_utils.py
 index d33be09..37e9cc0 100644
 --- a/wan/utils/multitalk_utils.py

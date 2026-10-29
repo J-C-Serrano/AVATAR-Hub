@@ -4,6 +4,7 @@ Prints every word-level difference (missing / extra / changed words) with its ti
 differences are folded with say_clean.py's ALIASES; numbers are ignored."""
 import difflib, json, re, subprocess, sys, tempfile, torch, librosa
 from transformers import pipeline
+import whisper_fast; whisper_fast.install()   # lossless: no per-tensor GPU syncs in word timestamps (whisper_fast.py)
 src = open("/hub/phase0/scripts/say_clean.py").read()
 exec(src[src.index("ALIASES = ["):src.index("load_lexicon(a.lexicon)")])   # ALIASES, NUM, load_lexicon
 LEXICON = []; load_lexicon(sys.argv[3] if len(sys.argv) > 3 else None)

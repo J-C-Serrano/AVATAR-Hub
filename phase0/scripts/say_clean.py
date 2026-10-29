@@ -12,6 +12,7 @@ import argparse, json, os, re, sys
 sys.path.insert(0, "/hub/app")
 import numpy as np, torch, librosa, soundfile as sf
 from transformers import pipeline
+import whisper_fast; whisper_fast.install()   # lossless: no per-tensor GPU syncs in word timestamps (whisper_fast.py)
 from engine import Engine
 
 ap = argparse.ArgumentParser()
@@ -48,7 +49,7 @@ def load_lexicon(path):
     d = json.load(open(path)); LEXICON[:0] = [tuple(x) for x in d.get("lexicon", [])]; ALIASES.extend(tuple(x) for x in d.get("aliases", []))
 
 
-NUM = re.compile(r"^(\d.*|zero|one|two|three|four|five|six|seven|eight|nine|ten|twenty\w*|thirty\w*|hundred|thousand|point)$")
+NUM = re.compile(r"^(\d.*|zero|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|(thir|four|fif|six|seven|eigh|nine)teen|(twen|thir|for|fif|six|seven|eigh|nine)ty\w*|hundred|thousand|million|billion|point|percent)$")
 load_lexicon(a.lexicon)
 FILLERS = {"uh", "um", "er", "erm", "ah", "eh", "hmm", "mm", "uhm"}
 FILL = re.compile(r"^(u+h+m*|u+m+|e+h+|e+r+m*|a+h+|h+m+|m+h*m+|e+m+|a+m{2,}|o+h+|mm+)$")
@@ -76,7 +77,9 @@ def wer(r, h):
     return d[len(h)] / max(len(r), 1)
 
 
-def score(w, text):
+def score(w, text, bound=None):
+    """bound: best score so far. The filler/repeat terms can only add, so once the timing/WER part alone reaches it,
+    the take can neither win nor pass --accept and the second Whisper pass is skipped (same choice, less GPU time)."""
     w16 = librosa.resample(w, orig_sr=eng.sr, target_sr=16000); dur = len(w16) / 16000
     r = asr(w16, return_timestamps="word", generate_kwargs={"language": a.lang, "task": "transcribe"})
     ch, heard = r["chunks"], r["text"].strip()
@@ -99,12 +102,14 @@ def score(w, text):
             ok = 0.8 if re.search(r"[,;:.?!]$", ch[i - 1]["text"].strip()) else 0.25
             gaps += max(0.0, t0 - (ch[i - 1]["timestamp"][1] or t0) - ok)
     stray = float(((rms > 0.15 * ref) & ~inw).sum() * 0.02)
+    e = wer(text, heard); part = 3 * e + 2 * stray + 3 * stretch + 2 * gaps
+    if bound is not None and part >= bound:
+        return part, dict(heard=heard, verbatim="(skipped)", wer=round(e, 3), stray=round(stray, 2), stretch=round(stretch, 2), gaps=round(gaps, 2), worst=worst)
     verb = asr(w16, generate_kwargs={"language": a.lang, "task": "transcribe", "prompt_ids": PIDS})["text"]
     verb = re.sub(r"^.*?" + re.escape(DISFL_PROMPT[-12:]), "", verb).strip()  # prompt echo, if any
     vw = [re.sub(r"[^\w']", "", x.lower()) for x in verb.split()]
     fillers = sum(bool(FILL.match(x)) or x in FILLERS for x in vw if x)
     if fillers: worst = f"{fillers} filler(s)"
-    e = wer(text, heard)
     hw, tw = toks(verb) or toks(heard), toks(text)   # a doubled word ("with a a") is a stutter; one in 25 words barely moves the WER
     reps = max(0, sum(hw[k] == hw[k - 1] for k in range(1, len(hw))) - sum(tw[k] == tw[k - 1] for k in range(1, len(tw))))
     if reps: worst = f"{reps} repeat(s)"
@@ -137,19 +142,27 @@ def render(paragraphs, tag, seed0):
     parts, rows, pos = [], [], 0
     for pi, para in enumerate(paragraphs):
         sents = [x.strip() for x in re.split(r"(?<=[.!?])\s+", para.strip()) if x.strip()]
+        # a 1-2 word sentence ("No.") crashes chatterbox's alignment analyzer on every seed: voice it with a neighbour
+        for i in range(len(sents) - 1, -1, -1):
+            if len(sents) > 1 and len(sents[i].split()) <= 2 and not sents[i].startswith("[+]"):
+                if i > 0: sents[i - 1] += " " + sents.pop(i)
+                elif not sents[1].startswith("[+]"): sents[0] += " " + sents.pop(1)
         for si, sent in enumerate(sents):
             cue = sent.startswith("[+]"); sent = sent[3:].strip() if cue else sent
             for ci, piece in enumerate(split_long(sent)):
                 best = None
                 for k in range(a.takes):
                     torch.manual_seed(seed0 + 1009 * pi + 101 * si + 13 * ci + k); eng._clear_hooks()
-                    w = eng.tts.generate(say(piece), language_id=a.lang, exaggeration=a.exag, cfg_weight=s["cfg_weight"] if a.cfg is None else a.cfg,
-                                         temperature=a.temp).squeeze().cpu().numpy()
-                    sc, q = score(w, piece)
+                    try:
+                        w = eng.tts.generate(say(piece), language_id=a.lang, exaggeration=a.exag, cfg_weight=s["cfg_weight"] if a.cfg is None else a.cfg,
+                                             temperature=a.temp).squeeze().cpu().numpy()
+                    except IndexError as e:   # chatterbox alignment analyzer bug (empty slice after completion): drop this take
+                        print(f"{tag} p{pi + 1}s{si + 1}{'abcdef'[ci]} take {k + 1}: generate failed ({e}), next seed", flush=True); continue
+                    sc, q = score(w, piece, None if best is None else best[0])
                     if a.keep and a.text: sf.write(f"{os.path.splitext(a.out)[0]}_t{k + 1}.wav", w, eng.sr)
                     print(f"{tag} p{pi + 1}s{si + 1}{'abcdef'[ci]} take {k + 1}: {sc:.2f} {q}", flush=True)
                     if best is None or sc < best[0]: best = (sc, w, q)
-                    if sc <= a.accept: break
+                    if sc <= a.accept and q["wer"] == 0: break   # early stop only when every word was heard right
                 best = (best[0], trim(best[1]), best[2])
                 rows.append(dict(text=piece, t0=round(pos / eng.sr, 3), t1=round((pos + len(best[1])) / eng.sr, 3),
                                  score=round(best[0], 2), takes=k + 1, para=pi, cue=cue and ci == 0, **best[2]))
